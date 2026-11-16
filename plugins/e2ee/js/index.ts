@@ -11,7 +11,7 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
-import { decryptMessages, encrypted } from './messages'
+import { decryptMessages, decryptPreview, encrypted } from './messages'
 import SettingsComponent from './settings'
 
 export interface Settings {
@@ -47,7 +47,7 @@ interface MessageActions {
         editMessage(channelId: string, messageId: string, message: { content: string }): unknown
 }
 
-// Aegires MessageBinder.java:46 puts a lock before the time; here it goes before the name (show-tag hooks the same row field)
+// Aegires MessageBinder.java:46 puts a lock before the time; here it goes before the name (show-tag/index.ts:79-92 rewrites the same row field)
 const LOCK = '\uD83D\uDD12 '
 const MessageRowType = 1
 
@@ -102,7 +102,7 @@ export default plugin<{ jsonStorage: Settings }>({
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
-                                                // Blocked: return a promise like the async sendMessage hook in fake-nitro fakeify.ts:248-256
+                                                // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
                                                 if (!encryptOutgoing(args[0], args[1])) return Promise.resolve()
                                                 return Reflect.apply(original, this, args)
                                         }),
@@ -115,14 +115,18 @@ export default plugin<{ jsonStorage: Settings }>({
                 )
 
                 cleanup(
-                        // modules/messages/native/renderer/RowGenerator.tsx, as in show-tag
+                        // modules/messages/native/renderer/RowGenerator.tsx; hook form from mention-avatars/js/index.ts:34 and fake-nitro realify.ts:244-245
                         getModules(withName<RowManager>('RowManager'), ({ prototype }) => {
                                 cleanup(
                                         // Already-cached messages: decrypt when the list (re)builds a row. Same idea as the Aliucord
                                         // plugin's `before onConfigure { decrypt(it) }`; hook form from anonymous-file-names (`before`).
                                         before(prototype, 'generate', args => {
                                                 const m = args[0]?.message
-                                                if (m) decryptMessages([m], m.channelId)
+                                                if (m) {
+                                                        decryptMessages([m], m.channelId)
+                                                        const preview = m.referencedMessage?.message
+                                                        if (preview) decryptPreview(preview)
+                                                }
                                                 return args
                                         }),
                                         after(prototype, 'generate', row => {
