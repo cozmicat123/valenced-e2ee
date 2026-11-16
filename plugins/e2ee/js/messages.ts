@@ -102,9 +102,10 @@ export function redecrypt() {
                 // A reply to an encrypted message must rebuild its row too, or its preview keeps the old text.
                 const repliesToEncrypted = !!messageReference?.message_id && encrypted.has(messageReference.message_id)
                 if (next === content && !repliesToEncrypted) continue
-                Dispatcher.dispatch({
-                        type: 'MESSAGE_UPDATE',
-                        message: { id, channel_id: channelId, content: next },
-                })
+                const update = (text: string) =>
+                        Dispatcher.dispatch({ type: 'MESSAGE_UPDATE', message: { id, channel_id: channelId, content: text } })
+                // Unchanged content may not rebuild the row, so change it and restore it (valid-user/js/index.ts:72 and :78).
+                if (next === content) update(`${content}\u200b`)
+                update(next)
         }
 }
