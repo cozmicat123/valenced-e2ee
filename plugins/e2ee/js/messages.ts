@@ -92,7 +92,7 @@ export function redecrypt() {
                 // Plain rows have no ciphertext. Already-decrypted rows go back through theirs, so a wrong key or
                 // Clear key shows them locked again, as in Aegires.
                 const cipher = looksEncrypted(content) ? content : id ? encrypted.get(id)?.cipher : undefined
-                if (!id) continue
+                if (!id || content === undefined) continue
                 let next = content
                 if (cipher) {
                         const copy: FluxMessage = { id, content: cipher, channel_id: channelId, author: { id: author?.id } }
