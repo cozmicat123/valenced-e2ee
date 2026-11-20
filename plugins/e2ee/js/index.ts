@@ -12,6 +12,7 @@ import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
+import { probe } from './probe'
 import SettingsComponent from './settings'
 
 export interface Settings {
@@ -153,6 +154,8 @@ export default plugin<{ jsonStorage: Settings }>({
                                 return evt
                         }),
                 )
+
+                probe(cleanup) // TEMPORARY
         },
         stop() {
                 callNativeMethod('cozmicat123.e2ee.clearKey', [])
