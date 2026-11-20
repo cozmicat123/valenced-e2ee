@@ -2,14 +2,18 @@
 //  - page shell and TextInput/Button: anonymous-file-names/js/settings.tsx:1-71
 //  - TableSwitchRow: better-chat-buttons/js/settings.tsx:56-68
 //  - TableRadioGroup/TableRadioRow: better-chat-buttons/js/settings.tsx:81-95
+//  - Clipboard.setString: link-alert-copy/index.tsx:47, developer-kit AssetBrowserSettingScreen.tsx:178
 // Texts and rules mirror aliucord-e2ee@aegires-sync E2eeSettings.kt (password 8-256, preset radios).
 import Page from '@valenced/components/Page'
 import { Design } from '@valenced/discord/design'
+import { ToastActionCreators } from '@valenced/discord/actions'
+import { Clipboard } from '@valenced/externals/react-native-clipboard'
 import { callNativeMethod } from '@valenced/modules/native'
 import { useEffect, useState } from 'react'
 import { ScrollView, Text } from 'react-native'
 import type { PluginSettingsComponent } from '@valenced/plugins/types'
 import type { ComponentProps } from 'react'
+import { debugText } from './debug'
 import { redecrypt } from './messages'
 import type { Settings } from '.'
 
@@ -75,6 +79,15 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                         callNativeMethod('cozmicat123.e2ee.clearKey', []).then(() => redecrypt())
                                                         setHasKey(false)
                                                         storage.set({ enabled: false })
+                                                }}
+                                        />
+                                        <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                text="Copy debug log"
+                                                onPress={() => {
+                                                        Clipboard.setString(debugText())
+                                                        ToastActionCreators.open('cozmicat123.e2ee.copied', { text: 'Debug log copied' })
                                                 }}
                                         />
                                         <Text>{hasKey ? 'Key set (kept in memory only).' : 'No key set.'}</Text>

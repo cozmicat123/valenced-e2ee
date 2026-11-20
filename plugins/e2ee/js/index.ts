@@ -11,6 +11,7 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
+import { debug } from './debug'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import SettingsComponent from './settings'
 
@@ -118,7 +119,7 @@ export default plugin<{ jsonStorage: Settings }>({
                         }
                         if (!encryptOutgoing(channelId, args[1])) return
                         const f = files[0]
-                        ToastActionCreators.open(`${ID}.dbg.start`, { text: 'file: encrypting' }) // TEMPORARY
+                        debug(`file item keys=${Object.keys(f).join(',')} uri=${typeof f.uri} filename=${typeof f.filename} mime=${typeof f.mimeType}`)
                         let res: { path?: string; name?: string; size?: number; error?: string } | undefined
                         try {
                                 res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
@@ -129,10 +130,12 @@ export default plugin<{ jsonStorage: Settings }>({
                                         selfIdOf(),
                                 ])
                         } catch (e) {
-                                ToastActionCreators.open(ToastKey, { text: `File encryption failed: ${String(e).slice(0, 120)}` })
+                                debug(`encryptFile threw: ${String(e)}`)
+                                ToastActionCreators.open(ToastKey, { text: 'File encryption failed (see Copy debug log in settings)' })
                                 return
                         }
                         if (!res || res.error || !res.path || !res.name || !res.size) {
+                                debug(`encryptFile result: ${JSON.stringify(res)}`)
                                 ToastActionCreators.open(ToastKey, { text: res?.error ?? 'File encryption failed' })
                                 return
                         }
@@ -149,15 +152,13 @@ export default plugin<{ jsonStorage: Settings }>({
                         })
                         const next = [...args]
                         next[3] = { ...args[3], attachmentsToUpload: [swapped] }
-                        // TEMPORARY diagnostics, removed once file sending works
-                        const dbg = (text: string) => ToastActionCreators.open(`${ID}.dbg.${text}`, { text })
-                        dbg(`enc ok ${res.name} ${res.size}`)
+                        debug(`encrypted ${res.name} ${res.size}`)
                         try {
                                 const sent = await Reflect.apply(original, self, next)
-                                dbg(`send returned ${typeof sent}`)
+                                debug(`send returned ${typeof sent}`)
                                 return sent
                         } catch (e) {
-                                dbg(`send threw ${String(e).slice(0, 80)}`)
+                                debug(`send threw: ${String(e)}`)
                                 throw e
                         }
                 }
@@ -166,12 +167,6 @@ export default plugin<{ jsonStorage: Settings }>({
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
-                                                // TEMPORARY diagnostics: which attachment-looking keys exist on the options / message
-                                                const look = (o: any) =>
-                                                        Object.keys(o ?? {})
-                                                                .filter(k => /att|file|upload/i.test(k))
-                                                                .join(',') || 'none'
-                                                ToastActionCreators.open(`${ID}.dbg.keys`, { text: `opts: ${look(args[3])} | msg: ${look(args[1])}` })
                                                 const files = (args[3] as any)?.attachmentsToUpload
                                                 if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
