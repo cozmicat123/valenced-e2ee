@@ -118,13 +118,20 @@ export default plugin<{ jsonStorage: Settings }>({
                         }
                         if (!encryptOutgoing(channelId, args[1])) return
                         const f = files[0]
-                        const res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
-                                f.uri,
-                                f.filename ?? null,
-                                f.mimeType ?? null,
-                                channelId,
-                                selfIdOf(),
-                        ])
+                        ToastActionCreators.open(`${ID}.dbg.start`, { text: 'file: encrypting' }) // TEMPORARY
+                        let res: { path?: string; name?: string; size?: number; error?: string } | undefined
+                        try {
+                                res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
+                                        f.uri,
+                                        f.filename ?? null,
+                                        f.mimeType ?? null,
+                                        channelId,
+                                        selfIdOf(),
+                                ])
+                        } catch (e) {
+                                ToastActionCreators.open(ToastKey, { text: `File encryption failed: ${String(e).slice(0, 120)}` })
+                                return
+                        }
                         if (!res || res.error || !res.path || !res.name || !res.size) {
                                 ToastActionCreators.open(ToastKey, { text: res?.error ?? 'File encryption failed' })
                                 return
