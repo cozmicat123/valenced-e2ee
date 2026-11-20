@@ -15,7 +15,7 @@ fi
 git -C "$SRC" checkout -q "$PIN"
 
 ok=1
-for f in Argon2id Blake2b Crypto ForcedKeys; do
+for f in Argon2id Blake2b Crypto FileNames ForcedKeys; do
   if diff <(grep -v '^package ' "$SRC/$UP/$f.java") <(grep -v '^package ' "$OURS/$f.java") >/dev/null; then
     echo "$f same"
   else

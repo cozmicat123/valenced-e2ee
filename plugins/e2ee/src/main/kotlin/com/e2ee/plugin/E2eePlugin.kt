@@ -3,12 +3,17 @@
 // AI-written glue (v1). Logic ported from cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt `object E2ee`
 // (keyFor/presetFor/encryptOn/encryptText), which itself mirrors Aegires MessageListScreen + MessageCryptoHelper.
 // Plugin/bridge structure: Valenced/valenced-plugin-template example-plugin MyPlugin.kt.
-// Crypto, ForcedKeys, Argon2id, Blake2b are vendored verbatim from Aegires and not touched here.
+// Crypto, FileNames, ForcedKeys, Argon2id, Blake2b are vendored verbatim from Aegires and not touched here.
+// v2 file encryption (encName, encryptFile): name rule ported from Aegires MessageListScreen.java:532-537; the
+// content:// / file path reading follows ThemesPlugin.kt:95-125 (valenced-community-plugins importBackground).
 package com.e2ee.plugin
 
+import android.app.AndroidAppHelper
+import android.net.Uri
 import app.valenced.plugins.plugin
 import app.valenced.xposed.api.registerNativeAsyncMethod
 import app.valenced.xposed.api.registerNativeMethod
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKey
 
@@ -45,6 +50,33 @@ private object E2ee {
         val out = Crypto.encrypt(plain, k, p, channelId, sender) ?: return null to "Encryption failed"
         return out to null
     }
+
+    // "x.ext" -> "x.enc.ext", no extension -> "x.enc" (Aegires AttachmentViewFactory.java:72 looks for exactly this)
+    private fun encName(original: String): String {
+        val dot = original.lastIndexOf('.')
+        return if (dot > 0) original.substring(0, dot) + ".enc" + original.substring(dot) else "$original.enc"
+    }
+
+    // Reads the picked file, writes the Aegires-format ciphertext copy into the cache and returns its location.
+    fun encryptFile(uri: String, name: String?, mime: String?, channelId: String, sender: String?): Map<String, Any?> {
+        val k = keyFor(channelId)
+            ?: return mapOf("error" to (if (isForced(channelId)) "Encryption key not ready yet" else "Encryption key missing"))
+        if (sender == null) return mapOf("error" to "Not ready yet, try again in a moment")
+        val app = AndroidAppHelper.currentApplication()
+        val dir = File(app.cacheDir, "e2ee-out").apply { mkdirs() }
+        val out = File(dir, encName(FileNames.randomFor(name, mime)))
+        val source = Uri.parse(uri)
+        val input = if (source.scheme == "content") app.contentResolver.openInputStream(source)
+        else File(source.path ?: uri).inputStream()
+        val ok = input?.use { i ->
+            out.outputStream().use { o -> Crypto.encryptStream(i, o, k, presetFor(channelId), channelId, sender) }
+        } ?: false
+        if (!ok) {
+            out.delete()
+            return mapOf("error" to "File encryption failed")
+        }
+        return mapOf("path" to out.absolutePath, "name" to out.name, "size" to out.length().toDouble())
+    }
 }
 
 val e2eePlugin = plugin {
@@ -73,6 +105,14 @@ val e2eePlugin = plugin {
         }
 
         registerNativeMethod("$id.hasKey") { _ -> E2ee.key != null }
+
+        // [channelId] -> Boolean
+        registerNativeMethod("$id.encryptOn") { args -> E2ee.encryptOn(args[0] as String) }
+
+        // [uri, filename?, mimeType?, channelId, selfId?] -> { path, name, size } | { error }. Heavy, so off the RN thread.
+        registerNativeAsyncMethod("$id.encryptFile") { args ->
+            E2ee.encryptFile(args[0] as String, args[1] as String?, args[2] as String?, args[3] as String, args[4] as String?)
+        }
 
         // [channelId, plain, selfId?] -> { text?: String, error?: String }, or null when encryption is off for the channel
         registerNativeMethod("$id.encrypt") { args ->

@@ -36,6 +36,11 @@ declare module '@valenced/modules/native' {
                         args: [channelId: string, plain: string, selfId: string | null],
                         returnValue: { text: string | null; error: string | null } | null,
                 ]
+                'cozmicat123.e2ee.encryptOn': [args: [channelId: string], returnValue: boolean]
+                'cozmicat123.e2ee.encryptFile': [
+                        args: [uri: string, filename: string | null, mimeType: string | null, channelId: string, selfId: string | null],
+                        returnValue: { path?: string; name?: string; size?: number; error?: string },
+                ]
                 'cozmicat123.e2ee.decrypt': [
                         args: [items: [content: unknown, channelId: string, authorId: string | null][]],
                         returnValue: { text: string | null; enc: boolean }[],
@@ -81,14 +86,15 @@ export default plugin<{ jsonStorage: Settings }>({
                 }
 
                 // Fails closed: returns false when the message must not be sent
+                const configureNative = () =>
+                        callNativeMethodSync('cozmicat123.e2ee.configure', [!!storage.cache?.enabled, storage.cache?.preset ?? 2])
+                const selfIdOf = (): string | null => (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
+
                 const encryptOutgoing = (channelId: string, data: { content?: string } | undefined) => {
                         const plain = data?.content?.trim()
                         if (!data || !plain) return true
-                        callNativeMethodSync('cozmicat123.e2ee.configure', [
-                                !!storage.cache?.enabled,
-                                storage.cache?.preset ?? 2,
-                        ])
-                        const selfId = (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
+                        configureNative()
+                        const selfId = selfIdOf()
                         const res = callNativeMethodSync('cozmicat123.e2ee.encrypt', [channelId, plain, selfId])
                         if (res === null) return true // encryption off for this channel
                         if (res.error || !res.text) {
@@ -99,10 +105,53 @@ export default plugin<{ jsonStorage: Settings }>({
                         return true
                 }
 
+                // v2: with files attached in an encrypted chat the picked file is replaced by its Aegires-format
+                // ciphertext copy right before sending (native encryptFile). Aegires sends one file per message, so
+                // more than one file is refused. Fails closed: on any problem nothing is sent.
+                // AI-written; the CloudUpload field names come from datamined Discord code and are checked on device.
+                const sendWithFile = async (self: unknown, args: any[], original: (...a: any[]) => unknown, files: any[]) => {
+                        const channelId: string = args[0]
+                        configureNative()
+                        if (!callNativeMethodSync('cozmicat123.e2ee.encryptOn', [channelId])) return Reflect.apply(original, self, args)
+                        if (files.length > 1) {
+                                ToastActionCreators.open(ToastKey, { text: 'Encrypted chats take one file per message' })
+                                return
+                        }
+                        if (!encryptOutgoing(channelId, args[1])) return
+                        const f = files[0]
+                        const res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
+                                f.uri,
+                                f.filename ?? null,
+                                f.mimeType ?? null,
+                                channelId,
+                                selfIdOf(),
+                        ])
+                        if (!res || res.error || !res.path || !res.name || !res.size) {
+                                ToastActionCreators.open(ToastKey, { text: res?.error ?? 'File encryption failed' })
+                                return
+                        }
+                        // Copy of the upload object (prototype kept); the original stays untouched for draft recovery
+                        const uri = `file://${res.path}`
+                        const swapped = Object.assign(Object.create(Object.getPrototypeOf(f)), f, {
+                                uri,
+                                originalUri: uri,
+                                filename: res.name,
+                                mimeType: 'application/octet-stream',
+                                currentSize: res.size,
+                                preCompressionSize: res.size,
+                                reactNativeFilePrepped: true,
+                        })
+                        const next = [...args]
+                        next[3] = { ...args[3], attachmentsToUpload: [swapped] }
+                        return Reflect.apply(original, self, next)
+                }
+
                 cleanup(
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
+                                                const files = (args[3] as any)?.attachmentsToUpload
+                                                if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
                                                 if (!encryptOutgoing(args[0], args[1])) return Promise.resolve()
                                                 return Reflect.apply(original, this, args)
