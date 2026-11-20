@@ -142,7 +142,17 @@ export default plugin<{ jsonStorage: Settings }>({
                         })
                         const next = [...args]
                         next[3] = { ...args[3], attachmentsToUpload: [swapped] }
-                        return Reflect.apply(original, self, next)
+                        // TEMPORARY diagnostics, removed once file sending works
+                        const dbg = (text: string) => ToastActionCreators.open(`${ID}.dbg.${text}`, { text })
+                        dbg(`enc ok ${res.name} ${res.size}`)
+                        try {
+                                const sent = await Reflect.apply(original, self, next)
+                                dbg(`send returned ${typeof sent}`)
+                                return sent
+                        } catch (e) {
+                                dbg(`send threw ${String(e).slice(0, 80)}`)
+                                throw e
+                        }
                 }
 
                 cleanup(
