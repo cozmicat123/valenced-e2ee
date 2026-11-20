@@ -1,9 +1,9 @@
 // TEMPORARY v2 probe (AI-written, to be removed). Shows only field NAMES and TYPES in a toast, never values.
-// Hooks copied from anonymous-file-names/js/index.ts:61-88 (uploadLocalFiles, CloudUpload) and the RowManager hook above.
+// Hooks copied from anonymous-file-names/js/index.ts:61-88 (uploadLocalFiles, CloudUpload).
 import { ToastActionCreators } from '@valenced/discord/actions'
 import { getModules } from '@valenced/modules/finders'
-import { withName, withProps } from '@valenced/modules/finders/filters'
-import { after, before } from '@valenced/patcher'
+import { withProps } from '@valenced/modules/finders/filters'
+import { before } from '@valenced/patcher'
 
 const shown = new Set<string>()
 
@@ -43,16 +43,6 @@ export function probe(cleanup: (...fns: (() => void)[]) => void) {
                                 before(mod, 'CloudUpload', args => {
                                         show('cloud-arg0', args[0])
                                         return args
-                                }),
-                        )
-                }),
-        )
-        cleanup(
-                getModules(withName<{ prototype: { generate(a: unknown): any } }>('RowManager'), ({ prototype }) => {
-                        cleanup(
-                                after(prototype, 'generate', row => {
-                                        show('row-attachment0', row?.message?.attachments?.[0])
-                                        return row
                                 }),
                         )
                 }),
