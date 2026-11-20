@@ -159,6 +159,12 @@ export default plugin<{ jsonStorage: Settings }>({
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
+                                                // TEMPORARY diagnostics: which attachment-looking keys exist on the options / message
+                                                const look = (o: any) =>
+                                                        Object.keys(o ?? {})
+                                                                .filter(k => /att|file|upload/i.test(k))
+                                                                .join(',') || 'none'
+                                                ToastActionCreators.open(`${ID}.dbg.keys`, { text: `opts: ${look(args[3])} | msg: ${look(args[1])}` })
                                                 const files = (args[3] as any)?.attachmentsToUpload
                                                 if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
