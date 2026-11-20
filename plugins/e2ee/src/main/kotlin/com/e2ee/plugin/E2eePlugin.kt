@@ -62,20 +62,34 @@ private object E2ee {
         val k = keyFor(channelId)
             ?: return mapOf("error" to (if (isForced(channelId)) "Encryption key not ready yet" else "Encryption key missing"))
         if (sender == null) return mapOf("error" to "Not ready yet, try again in a moment")
-        val app = AndroidAppHelper.currentApplication()
-        val dir = File(app.cacheDir, "e2ee-out").apply { mkdirs() }
-        val out = File(dir, encName(FileNames.randomFor(name, mime)))
-        val source = Uri.parse(uri)
-        val input = if (source.scheme == "content") app.contentResolver.openInputStream(source)
-        else File(source.path ?: uri).inputStream()
-        val ok = input?.use { i ->
-            out.outputStream().use { o -> Crypto.encryptStream(i, o, k, presetFor(channelId), channelId, sender) }
-        } ?: false
-        if (!ok) {
-            out.delete()
-            return mapOf("error" to "File encryption failed")
+        // Any failure is reported with the step it happened in, so the toast says what broke
+        var stage = "app"
+        var out: File? = null
+        try {
+            val app = AndroidAppHelper.currentApplication()
+            stage = "dir"
+            val dir = File(app.cacheDir, "e2ee-out").apply { mkdirs() }
+            stage = "name"
+            val file = File(dir, encName(FileNames.randomFor(name, mime)))
+            out = file
+            stage = "open"
+            val source = Uri.parse(uri)
+            val input = if (source.scheme == "content") app.contentResolver.openInputStream(source)
+            else File(source.path ?: uri).inputStream()
+            stage = "crypto"
+            val ok = input?.use { i ->
+                file.outputStream().use { o -> Crypto.encryptStream(i, o, k, presetFor(channelId), channelId, sender) }
+            } ?: false
+            if (!ok) {
+                file.delete()
+                return mapOf("error" to "File encryption failed (crypto returned false)")
+            }
+        } catch (t: Throwable) {
+            out?.delete()
+            return mapOf("error" to "File encryption failed at $stage: ${t.javaClass.simpleName}")
         }
-        return mapOf("path" to out.absolutePath, "name" to out.name, "size" to out.length().toDouble())
+        val done = out ?: return mapOf("error" to "File encryption failed (no output)")
+        return mapOf("path" to done.absolutePath, "name" to done.name, "size" to done.length().toDouble())
     }
 }
 
