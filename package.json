@@ -1,15 +1,15 @@
 {
-	"name": "@example/valenced-plugins",
+	"name": "@cozmicat123/valenced-e2ee",
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"build": "valenced-plugin build",
 		"build:dev": "valenced-plugin build --dev",
 		"generate-index": "valenced-plugin generate-index",
-		"plan-releases": "valenced-plugin plan-releases --plugins-dir plugins --plugins-dir themes",
+		"plan-releases": "valenced-plugin plan-releases --plugins-dir plugins",
 		"serve": "valenced-plugin serve",
 		"lint": "biome check",
-		"lint:types": "tsc -b plugins/*/tsconfig.json themes/*/tsconfig.json && tsc -p cli --noEmit"
+		"lint:types": "tsc -b plugins/*/tsconfig.json && tsc -p cli --noEmit"
 	},
 	"dependencies": {
 		"@revenge-mod/devtools-client": "^1.4.0",
