@@ -97,7 +97,7 @@ export function redecrypt() {
                 if (cipher) {
                         const copy: FluxMessage = { id, content: cipher, channel_id: channelId, author: { id: author?.id } }
                         decryptMessages([copy])
-                        next = copy.content
+                        next = copy.content ?? content
                 }
                 // A reply to an encrypted message must rebuild its row too, or its preview keeps the old text.
                 const repliesToEncrypted = !!messageReference?.message_id && encrypted.has(messageReference.message_id)
