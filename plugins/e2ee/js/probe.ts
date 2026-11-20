@@ -7,17 +7,20 @@ import { after, before } from '@valenced/patcher'
 
 const shown = new Set<string>()
 
-// Once per label, so a long chat does not flood the screen
+// Once per label, so a long chat does not flood the screen. Undefined is skipped so it cannot use up the label.
+// Long field lists are split over several toasts because one toast cuts the text off.
 function show(label: string, o: unknown) {
-        if (shown.has(label)) return
+        if (o === undefined || o === null || shown.has(label)) return
         shown.add(label)
-        const text =
-                o && typeof o === 'object'
-                        ? Object.entries(o as object)
-                                  .map(([k, v]) => `${k}:${typeof v}`)
-                                  .join(' ')
-                        : typeof o
-        ToastActionCreators.open(`E2EE_PROBE_${label}`, { text: `${label} => ${text}` })
+        if (typeof o !== 'object') {
+                ToastActionCreators.open(`E2EE_PROBE_${label}`, { text: `${label} => ${typeof o}` })
+                return
+        }
+        const fields = Object.entries(o as object).map(([k, v]) => `${k}:${typeof v}`)
+        for (let i = 0; i < fields.length; i += 4)
+                ToastActionCreators.open(`E2EE_PROBE_${label}_${i}`, {
+                        text: `${label} ${fields.slice(i, i + 4).join(' ')}`,
+                })
 }
 
 export function probe(cleanup: (...fns: (() => void)[]) => void) {
