@@ -117,7 +117,6 @@ export default plugin<{ jsonStorage: Settings }>({
                                 ToastActionCreators.open(ToastKey, { text: 'Encrypted chats take one file per message' })
                                 return
                         }
-                        if (!encryptOutgoing(channelId, args[1])) return
                         // The picked file's location lives in the CloudUpload's `item` (the object the pick toasts showed), not on the upload
                         const f = files[0]
                         const item = f.item
@@ -126,6 +125,11 @@ export default plugin<{ jsonStorage: Settings }>({
                                 ToastActionCreators.open(ToastKey, { text: 'Unknown attachment format, file not sent' })
                                 return
                         }
+                        // Aegires puts the picture size in front of the caption before encrypting it (MessageListScreen.java:455-470),
+                        // also when there is no caption. Done on a copy so the original draft stays as it was.
+                        const tag = f.isImage && item.width > 0 && item.height > 0 ? `[sz:${item.width},${item.height}]` : ''
+                        const message = { ...args[1], content: tag + (args[1]?.content ?? '') }
+                        if (!encryptOutgoing(channelId, message)) return
                         let res: { path?: string; name?: string; size?: number; error?: string } | undefined
                         try {
                                 res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
@@ -156,6 +160,7 @@ export default plugin<{ jsonStorage: Settings }>({
                                 reactNativeFilePrepped: true,
                         })
                         const next = [...args]
+                        next[1] = message
                         next[3] = { ...args[3], attachmentsToUpload: [swapped] }
                         debug(`encrypted ${res.name} ${res.size}`)
                         try {
