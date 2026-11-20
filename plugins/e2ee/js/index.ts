@@ -118,12 +118,18 @@ export default plugin<{ jsonStorage: Settings }>({
                                 return
                         }
                         if (!encryptOutgoing(channelId, args[1])) return
+                        // The picked file's location lives in the CloudUpload's `item` (the object the pick toasts showed), not on the upload
                         const f = files[0]
-                        debug(`file item keys=${Object.keys(f).join(',')} uri=${typeof f.uri} filename=${typeof f.filename} mime=${typeof f.mimeType}`)
+                        const item = f.item
+                        if (typeof item?.uri !== 'string') {
+                                debug(`file item has no uri: item keys=${Object.keys(item ?? {}).join(',')}`)
+                                ToastActionCreators.open(ToastKey, { text: 'Unknown attachment format, file not sent' })
+                                return
+                        }
                         let res: { path?: string; name?: string; size?: number; error?: string } | undefined
                         try {
                                 res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
-                                        f.uri,
+                                        item.uri,
                                         f.filename ?? null,
                                         f.mimeType ?? null,
                                         channelId,
@@ -142,8 +148,7 @@ export default plugin<{ jsonStorage: Settings }>({
                         // Copy of the upload object (prototype kept); the original stays untouched for draft recovery
                         const uri = `file://${res.path}`
                         const swapped = Object.assign(Object.create(Object.getPrototypeOf(f)), f, {
-                                uri,
-                                originalUri: uri,
+                                item: { ...item, uri, originalUri: uri, filename: res.name, mimeType: 'application/octet-stream' },
                                 filename: res.name,
                                 mimeType: 'application/octet-stream',
                                 currentSize: res.size,
