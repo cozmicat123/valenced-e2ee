@@ -9,7 +9,7 @@ const shown = new Set<string>()
 
 // Once per label, so a long chat does not flood the screen. Undefined is skipped so it cannot use up the label.
 // Long field lists are split over several toasts because one toast cuts the text off.
-function show(label: string, o: unknown) {
+export function show(label: string, o: unknown) {
         if (o === undefined || o === null || shown.has(label)) return
         shown.add(label)
         if (typeof o !== 'object') {

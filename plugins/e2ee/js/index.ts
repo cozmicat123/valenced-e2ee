@@ -12,7 +12,7 @@ import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
-import { probe } from './probe'
+import { probe, show } from './probe'
 import SettingsComponent from './settings'
 
 export interface Settings {
@@ -150,6 +150,9 @@ export default plugin<{ jsonStorage: Settings }>({
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
+                                                show('send-hit', { argc: args.length })
+                                                show('send-opts', args[3])
+                                                show('send-msg', args[1])
                                                 const files = (args[3] as any)?.attachmentsToUpload
                                                 if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
