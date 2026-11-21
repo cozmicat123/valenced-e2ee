@@ -1,4 +1,4 @@
-// AI-written glue (v2 receive). Decrypting an attachment happens in native (vendored Aegires MediaCache.decryptToTemp:
+// AI-written glue (v2 receive, pictures and videos like Aegires). Decrypting an attachment happens in native (vendored Aegires MediaCache.decryptToTemp:
 // download, size limits, disk cache). This file only swaps the attachment in the message for the decrypted local file.
 // The swap is a MESSAGE_UPDATE, the same way messages.ts redecrypt() refreshes rows (valid-user/js/index.ts:54-83).
 import { Dispatcher } from '@valenced/discord/common/flux'
@@ -35,12 +35,15 @@ export const setSize = (id: string, w: number, h: number) => sizes.set(id, [w, h
 // Same test as Aegires AttachmentViewFactory.java:72
 const isEncrypted = (name: string) => name.includes('.enc.') || name.endsWith('.enc')
 const plainName = (name: string) => name.replace('.enc', '')
+// Same list as Aegires AttachmentViewFactory.isVideoFilename (screen/AttachmentViewFactory.java:75-84)
+const isVideo = (name: string) => /\.(mp4|mov|webm|m4v|3gp)$/i.test(name)
 
 async function open(a: Attachment, channelId: string, authorId: string | null, w: number, h: number): Promise<Attachment> {
-        // Only pictures for now
-        if (!isEncrypted(a.filename) || !a.content_type?.startsWith('image/')) return a
+        // Aegires shows only pictures and videos; other encrypted files stay as they are
+        const video = isVideo(a.filename)
+        if (!isEncrypted(a.filename) || !(video || a.content_type?.startsWith('image/'))) return a
         try {
-                const r = await callNativeMethod('cozmicat123.e2ee.decryptFile', [a.url, channelId, authorId, a.size ?? 0, w, h])
+                const r = await callNativeMethod('cozmicat123.e2ee.decryptFile', [a.url, channelId, authorId, a.size ?? 0, w, h, video])
                 if (!r.path) {
                         debug(`decryptFile ${a.filename}: ${JSON.stringify(r)}`)
                         return a

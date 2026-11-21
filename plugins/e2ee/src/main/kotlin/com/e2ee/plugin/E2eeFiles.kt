@@ -6,6 +6,7 @@ package com.e2ee.plugin
 
 import android.app.AndroidAppHelper
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import java.io.File
 import java.io.InputStream
@@ -61,12 +62,14 @@ internal object E2eeFiles {
         return mapOf("path" to out.absolutePath, "name" to out.name, "size" to out.length().toDouble())
     }
 
-    // Downloads and decrypts a received picture into a temp file. Waits on this worker thread, which is off the RN thread.
-    fun decrypt(url: String, channelId: String, sender: String?, size: Long, w: Int, h: Int): Map<String, Any?> {
+    // Downloads and decrypts a received picture or video into a temp file. Waits on this worker thread, which is off the RN thread.
+    fun decrypt(url: String, channelId: String, sender: String?, size: Long, w: Int, h: Int, video: Boolean): Map<String, Any?> {
         val key = E2ee.requireKey(channelId)
         val from = E2ee.requireSender(sender)
         val result = CompletableFuture<Map<String, Any?>>()
-        val spec = MediaCache.Spec.encryptedImage(url, key, channelId, from, size, w, h)
+        // Same choice as Aegires EncryptedMediaSlot.java:121-124 (video limits differ)
+        val spec = if (video) MediaCache.Spec.encryptedVideo(url, key, channelId, from, size, w)
+        else MediaCache.Spec.encryptedImage(url, key, channelId, from, size, w, h)
         MediaCache.get(app).decryptToTemp(spec, object : MediaCache.TempCallback {
             override fun onProgress(done: Long, total: Long) {}
             override fun onNeedsConfirm(totalBytes: Long) {
@@ -76,22 +79,41 @@ internal object E2eeFiles {
                 result.complete(mapOf("error" to failure.toString()))
             }
             override fun onFile(plaintext: File) {
-                result.complete(described(plaintext, w, h))
+                result.complete(described(plaintext, w, h, video))
             }
         })
         return result.get(DECRYPT_WAIT_S, TimeUnit.SECONDS)
     }
 
-    // Pictures sent without a "[sz:W,H]" tag: read the size from the decrypted file itself
-    private fun described(file: File, w: Int, h: Int): Map<String, Any?> {
+    // Pictures sent without a "[sz:W,H]" tag, and videos (which never have one): read the size from the decrypted file itself
+    private fun described(file: File, w: Int, h: Int, video: Boolean): Map<String, Any?> {
         if (w > 0 && h > 0) return mapOf("path" to file.absolutePath)
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        val (width, height) = if (video) videoSize(file) else imageSize(file)
         return mapOf(
             "path" to file.absolutePath,
-            "w" to bounds.outWidth.takeIf { it > 0 }?.toDouble(),
-            "h" to bounds.outHeight.takeIf { it > 0 }?.toDouble(),
+            "w" to width.takeIf { it > 0 }?.toDouble(),
+            "h" to height.takeIf { it > 0 }?.toDouble(),
         )
+    }
+
+    private fun imageSize(file: File): Pair<Int, Int> {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        return bounds.outWidth to bounds.outHeight
+    }
+
+    // Width and height as played (a sideways recording swaps them)
+    private fun videoSize(file: File): Pair<Int, Int> {
+        val meta = MediaMetadataRetriever()
+        return try {
+            meta.setDataSource(file.absolutePath)
+            fun field(key: Int) = meta.extractMetadata(key)?.toIntOrNull() ?: 0
+            val w = field(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+            val h = field(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+            if (field(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION) % 180 == 90) h to w else w to h
+        } finally {
+            meta.release()
+        }
     }
 
     // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies

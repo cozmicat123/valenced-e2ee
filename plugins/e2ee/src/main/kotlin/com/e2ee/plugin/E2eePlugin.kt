@@ -65,9 +65,9 @@ val e2eePlugin = plugin {
             }
         }
 
-        // [url, channelId, selfId?, size, w, h] -> { path, w?, h? } | { confirm: bytes } | { error }
+        // [url, channelId, selfId?, size, w, h, video] -> { path, w?, h? } | { confirm: bytes } | { error }
         registerNativeAsyncMethod("$id.decryptFile") { args ->
-            E2ee.attempt("Image decryption") {
+            E2ee.attempt("Media decryption") {
                 E2eeFiles.decrypt(
                     args[0] as String,
                     args[1] as String,
@@ -75,6 +75,7 @@ val e2eePlugin = plugin {
                     (args[3] as Number).toLong(),
                     (args[4] as Number).toInt(),
                     (args[5] as Number).toInt(),
+                    args[6] as Boolean,
                 )
             }
         }
