@@ -43,7 +43,7 @@ declare module '@valenced/modules/native' {
                 ]
                 'cozmicat123.e2ee.decrypt': [
                         args: [items: [content: unknown, channelId: string, authorId: string | null][]],
-                        returnValue: { text: string | null; enc: boolean }[],
+                        returnValue: { text: string | null; enc: boolean; w: number | null; h: number | null }[],
                 ]
         }
 }

@@ -17,6 +17,9 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKey
 
+// Same pattern as Aegires MessageCryptoHelper.java:14
+private val SIZE_TAG = Regex("^\\[sz:(\\d+),(\\d+)\\]")
+
 private object E2ee {
     @Volatile var key: SecretKey? = null
     @Volatile var enabled = false
@@ -141,7 +144,7 @@ val e2eePlugin = plugin {
             }
         }
 
-        // [[content, channelId, authorId?], ...] -> [{ text: plain | null, enc: Boolean }, ...]
+        // [[content, channelId, authorId?], ...] -> [{ text: plain | null, enc: Boolean, w?, h? }, ...]
         // text null = leave the message as is. enc = looksEncrypted(content), same rule as Aegires Message.encrypted.
         registerNativeMethod("$id.decrypt") { args ->
             (args[0] as List<*>).map { item ->
@@ -149,7 +152,14 @@ val e2eePlugin = plugin {
                 val enc = content is String && Crypto.looksEncrypted(content)
                 val k = E2ee.keyFor(channelId as String)
                 val text = if (k == null || !enc) null else Crypto.decrypt(content as String, k, channelId, author as String?)
-                mapOf("text" to text, "enc" to enc)
+                // Aegires strips a leading "[sz:W,H]" from the text and keeps the size for the picture (MessageCryptoHelper.java:75-98)
+                val tag = text?.let { SIZE_TAG.find(it) }
+                mapOf(
+                    "text" to (if (tag != null) text?.substring(tag.range.last + 1) else text),
+                    "enc" to enc,
+                    "w" to tag?.groupValues?.get(1)?.toDoubleOrNull(),
+                    "h" to tag?.groupValues?.get(2)?.toDoubleOrNull(),
+                )
             }
         }
     }
