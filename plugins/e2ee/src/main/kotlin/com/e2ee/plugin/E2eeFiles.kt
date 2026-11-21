@@ -5,7 +5,12 @@
 package com.e2ee.plugin
 
 import android.app.AndroidAppHelper
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import java.io.File
@@ -17,6 +22,7 @@ internal object E2eeFiles {
     private const val MAX_UPLOAD_BYTES = 25L * 1024 * 1024 // Aegires ApiClient.java:52
     private const val KEEP_MS = 3_600_000L // uploads read their ciphertext copy after sending, so only old ones go
     private const val DECRYPT_WAIT_S = 180L
+    private const val POSTER_EXT = "jpg"
 
     private val app get() = AndroidAppHelper.currentApplication()
     private val outDir get() = File(app.cacheDir, "e2ee-out")
@@ -81,11 +87,11 @@ internal object E2eeFiles {
                 result.complete(mapOf("error" to failure.toString()))
             }
             override fun onFile(plaintext: File) {
-                if (videoExt == null) {
-                    result.complete(described(plaintext, w, h, false))
-                } else {
-                    result.complete(described(playable(plaintext, videoExt), w, h, true))
-                }
+                // Must complete the future whatever happens, or the caller waits out DECRYPT_WAIT_S
+                result.complete(
+                    runCatching { described(if (videoExt == null) plaintext else poster(playable(plaintext, videoExt)), w, h) }
+                        .getOrElse { mapOf("error" to "Could not read the media") },
+                )
             }
         })
         return result.get(DECRYPT_WAIT_S, TimeUnit.SECONDS)
@@ -94,18 +100,53 @@ internal object E2eeFiles {
     // Like Aegires wiping its plain folder when the cache is built: videos of an earlier run go on first use
     private val leftovers by lazy { playDir.listFiles()?.forEach { it.delete() } }
 
-    // Discord's player cannot play a file:// video, so ours plays it (see playVideo). The cache names its temp files ".tmp",
-    // so the video moves to our own folder under its real extension (a move, nothing is left in the cache).
+    // The cache names its temp files ".tmp", so a video moves to our own folder under its real extension
+    // (a move, nothing is left in the cache). VideoPlayer plays it from there.
     private fun playable(temp: File, ext: String): File {
         leftovers
         val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
         return if (temp.renameTo(target)) target else temp
     }
 
-    // Pictures sent without a "[sz:W,H]" tag, and videos (which never have one): read the size from the decrypted file itself
-    private fun described(file: File, w: Int, h: Int, video: Boolean): Map<String, Any?> {
+    // Discord cannot play a local video (inline or in its viewer), so the message shows a picture of the video's first frame
+    // with a play badge. Tapping it opens the video in VideoPlayer, which finds the video next to this file (videoFor).
+    private fun poster(video: File): File {
+        val meta = MediaMetadataRetriever()
+        val frame = try {
+            meta.setDataSource(video.absolutePath)
+            meta.getFrameAtTime(0) ?: throw E2eeError("No picture in the video")
+        } finally {
+            meta.release()
+        }
+        val picture = frame.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(picture)
+        val cx = picture.width / 2f
+        val cy = picture.height / 2f
+        val r = minOf(picture.width, picture.height) / 8f
+        canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(150, 0, 0, 0) })
+        val triangle = Path().apply {
+            moveTo(cx - r * 0.3f, cy - r * 0.5f)
+            lineTo(cx - r * 0.3f, cy + r * 0.5f)
+            lineTo(cx + r * 0.55f, cy)
+            close()
+        }
+        canvas.drawPath(triangle, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE })
+        val file = File(video.parentFile, "${video.nameWithoutExtension}.$POSTER_EXT")
+        file.outputStream().use { picture.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        return file
+    }
+
+    /** The decrypted video behind a poster picture, given the uri Discord's viewer was opened with. Null for anything else. */
+    fun videoFor(uri: String): File? {
+        val poster = File(Uri.parse(uri).path ?: return null)
+        if (poster.extension != POSTER_EXT || poster.parentFile?.canonicalFile != playDir.canonicalFile) return null
+        return playDir.listFiles()?.firstOrNull { it.nameWithoutExtension == poster.nameWithoutExtension && it.extension != POSTER_EXT }
+    }
+
+    // Pictures sent without a "[sz:W,H]" tag, and video posters (videos never have a tag): read the size from the file itself
+    private fun described(file: File, w: Int, h: Int): Map<String, Any?> {
         if (w > 0 && h > 0) return mapOf("path" to file.absolutePath)
-        val (width, height) = if (video) videoSize(file) else imageSize(file)
+        val (width, height) = imageSize(file)
         return mapOf(
             "path" to file.absolutePath,
             "w" to width.takeIf { it > 0 }?.toDouble(),
@@ -117,20 +158,6 @@ internal object E2eeFiles {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         return bounds.outWidth to bounds.outHeight
-    }
-
-    // Width and height as played (a sideways recording swaps them)
-    private fun videoSize(file: File): Pair<Int, Int> {
-        val meta = MediaMetadataRetriever()
-        return try {
-            meta.setDataSource(file.absolutePath)
-            fun field(key: Int) = meta.extractMetadata(key)?.toIntOrNull() ?: 0
-            val w = field(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-            val h = field(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-            if (field(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION) % 180 == 90) h to w else w to h
-        } finally {
-            meta.release()
-        }
     }
 
     // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies and played videos

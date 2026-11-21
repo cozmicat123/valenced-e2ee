@@ -49,9 +49,11 @@ async function open(a: Attachment, channelId: string, authorId: string | null, w
                         return a
                 }
                 const url = `file://${r.path}`
+                // A video comes back as a picture of its first frame (see E2eeFiles.poster), so Discord shows it as an image
+                const poster = ext ? { filename: `${plainName(a.filename).replace(/\.\w+$/, '')}.jpg`, content_type: 'image/jpeg' } : {}
                 const width = w || r.w
                 const height = h || r.h
-                return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(width && height ? { width, height } : {}) }
+                return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...poster, ...(width && height ? { width, height } : {}) }
         } catch (e) {
                 debug(`decryptFile ${a.filename} threw: ${String(e)}`)
                 return a

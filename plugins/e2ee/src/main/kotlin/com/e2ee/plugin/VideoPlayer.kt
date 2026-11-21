@@ -1,11 +1,10 @@
-// AI-written glue. Discord's viewer cannot play a local file (tested on device: black 0:00 for file://, never connects to a
+// AI-written glue. Discord cannot play a local file (tested on device: black 0:00 for file://, never connects to a
 // loopback server), so decrypted videos play in Android's own VideoView. Activity access: Valenced HostScope.withAppActivity
 // (valenced-plugin-template MyPlugin.kt).
 package com.e2ee.plugin
 
 import android.app.Activity
 import android.app.Dialog
-import android.net.Uri
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -15,10 +14,9 @@ import android.widget.VideoView
 import java.io.File
 
 object VideoPlayer {
-    /** Plays [uri] (the file:// address Discord's viewer was opened with) if it is a video we decrypted. False for anything else. */
+    /** Plays the video behind [uri] (the poster address Discord's viewer was opened with). False for anything else. */
     fun play(activity: Activity, uri: String): Boolean {
-        val file = File(Uri.parse(uri).path ?: return false)
-        if (!file.isFile || file.parentFile?.canonicalFile != E2eeFiles.playDir.canonicalFile) return false
+        val file = E2eeFiles.videoFor(uri) ?: return false
         activity.runOnUiThread { show(activity, file) }
         return true
     }
