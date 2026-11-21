@@ -79,6 +79,11 @@ val e2eePlugin = plugin {
                 )
             }
         }
+
+        // [uri] -> Boolean: plays a decrypted video in a native fullscreen player; false when the uri is not one of ours
+        withAppActivity { activity ->
+            registerNativeMethod("$id.playVideo") { args -> VideoPlayer.play(activity, args[0] as String) }
+        }
     }
 
     stop {

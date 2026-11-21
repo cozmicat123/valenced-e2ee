@@ -10,7 +10,6 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
-import { debug } from './debug'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import { createSender } from './send'
 import SettingsComponent from './settings'
@@ -32,6 +31,7 @@ declare module '@valenced/modules/native' {
                         args: [channelId: string, plain: string, selfId: string | null],
                         returnValue: { text?: string; error?: string } | null,
                 ]
+                'cozmicat123.e2ee.playVideo': [args: [uri: string], returnValue: boolean]
                 'cozmicat123.e2ee.encryptOn': [args: [channelId: string], returnValue: boolean]
                 'cozmicat123.e2ee.encryptFile': [
                         args: [uri: string, filename: string | null, mimeType: string | null, channelId: string, selfId: string | null],
@@ -113,11 +113,13 @@ export default plugin<{ jsonStorage: Settings }>({
                 )
 
                 cleanup(
-                        // TEMP probe: which uri does the viewer get when a video is tapped? (module lookup as in picture-links/js/index.tsx:830)
+                        // Discord's viewer cannot play a local video, so a decrypted one opens in the native player instead.
+                        // Module lookup as in picture-links/js/index.tsx:830; the uri is what the viewer was opened with (seen on device)
                         getModules(withProps<MediaModal>('openMediaModal'), modal => {
                                 cleanup(
                                         instead(modal, 'openMediaModal', function (args, original) {
-                                                debug(`openMediaModal ${args[0]?.initialSources?.[0]?.uri}`)
+                                                const uri = args[0]?.initialSources?.[0]?.uri
+                                                if (uri?.startsWith('file://') && callNativeMethodSync('cozmicat123.e2ee.playVideo', [uri])) return
                                                 return Reflect.apply(original, this, args)
                                         }),
                                 )
