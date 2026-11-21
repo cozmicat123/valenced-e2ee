@@ -35,14 +35,16 @@ export function createSender(configureNative: () => void) {
         // for draft recovery), or undefined after telling the user why not.
         async function encryptUpload(f: any, channelId: string) {
                 const item = f.item
-                let res
-                try {
-                        res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [item.uri, f.filename ?? null, f.mimeType ?? null, channelId, selfIdOf()])
-                } catch (e) {
+                const res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
+                        item.uri,
+                        f.filename ?? null,
+                        f.mimeType ?? null,
+                        channelId,
+                        selfIdOf(),
+                ]).catch(e => {
                         debug(`encryptFile threw: ${String(e)}`)
-                        toast('File encryption failed (see Copy debug log in settings)')
-                        return
-                }
+                })
+                if (!res) return toast('File encryption failed (see Copy debug log in settings)')
                 if (!res.path || !res.name || !res.size) {
                         debug(`encryptFile result: ${JSON.stringify(res)}`)
                         toast(res.error ?? 'File encryption failed')
