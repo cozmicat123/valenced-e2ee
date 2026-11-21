@@ -21,7 +21,7 @@ internal object E2eeFiles {
 
     private val app get() = AndroidAppHelper.currentApplication()
     private val outDir get() = File(app.cacheDir, "e2ee-out")
-    private val playDir get() = File(app.cacheDir, "e2ee-play") // decrypted videos, kept until Clear key or stop
+    val playDir get() = File(app.cacheDir, "e2ee-play") // decrypted videos, served by MediaServer, kept until Clear key or stop
 
     // "x.ext" -> "x.enc.ext", no extension -> "x.enc" (Aegires AttachmentViewFactory.java:72 looks for exactly this)
     private fun encName(original: String): String {
@@ -82,7 +82,12 @@ internal object E2eeFiles {
                 result.complete(mapOf("error" to failure.toString()))
             }
             override fun onFile(plaintext: File) {
-                result.complete(described(if (videoExt != null) playable(plaintext, videoExt) else plaintext, w, h, video))
+                if (videoExt == null) {
+                    result.complete(described(plaintext, w, h, false))
+                } else {
+                    val file = playable(plaintext, videoExt)
+                    result.complete(described(file, w, h, true) + ("url" to MediaServer.urlFor(file)))
+                }
             }
         })
         return result.get(DECRYPT_WAIT_S, TimeUnit.SECONDS)
@@ -91,8 +96,9 @@ internal object E2eeFiles {
     // Like Aegires wiping its plain folder when the cache is built: videos of an earlier run go on first use
     private val leftovers by lazy { playDir.listFiles()?.forEach { it.delete() } }
 
-    // Discord's player reads a file by its extension and the cache names its temp files ".tmp", so a video moves to our
-    // own folder under its real extension (a move, nothing is left in the cache).
+    // Discord's player cannot play file:// and reads a file by its extension, and the cache names its temp files ".tmp".
+    // So a video moves to our own folder under its real extension (a move, nothing is left in the cache) and is served
+    // to the player by MediaServer.
     private fun playable(temp: File, ext: String): File {
         leftovers
         val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
@@ -139,6 +145,7 @@ internal object E2eeFiles {
 
     // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies and played videos
     fun clear() {
+        MediaServer.stop()
         MediaCache.get(app).clearSensitive()
         outDir.listFiles()?.forEach { it.delete() }
         playDir.listFiles()?.forEach { it.delete() }
