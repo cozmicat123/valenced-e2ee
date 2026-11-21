@@ -48,9 +48,7 @@ async function open(a: Attachment, channelId: string, authorId: string | null, w
                         debug(`decryptFile ${a.filename}: ${JSON.stringify(r)}`)
                         return a
                 }
-                // Videos come with an http:// address on the loopback server, since Discord's player cannot play file://
-                const url = ext ? 'https://www.w3schools.com/html/mov_bbb.mp4' : (r.url ?? `file://${r.path}`) // TEMP probe: public https video
-                if (ext) debug(`video ${r.info} ${url} ${a.content_type}`) // TEMP diagnostic
+                const url = `file://${r.path}`
                 const width = w || r.w
                 const height = h || r.h
                 return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(width && height ? { width, height } : {}) }

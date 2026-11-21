@@ -10,6 +10,7 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
+import { debug } from './debug'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import { createSender } from './send'
 import SettingsComponent from './settings'
@@ -38,10 +39,9 @@ declare module '@valenced/modules/native' {
                 ]
                 'cozmicat123.e2ee.decryptFile': [
                         args: [url: string, channelId: string, authorId: string | null, size: number, w: number, h: number, videoExt: string | null],
-                        returnValue: { path?: string; url?: string; info?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
+                        returnValue: { path?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
                 ]
                 'cozmicat123.e2ee.clearMedia': [args: [], returnValue: null]
-                'cozmicat123.e2ee.mediaLog': [args: [], returnValue: string] // TEMP diagnostic
                 'cozmicat123.e2ee.decrypt': [
                         args: [items: [content: unknown, channelId: string, authorId: string | null][]],
                         returnValue: { text: string | null; enc: boolean; w: number | null; h: number | null }[],
@@ -57,6 +57,10 @@ interface MessageActions {
 // Aegires MessageBinder.java:46 puts a lock before the time; here it goes before the name (show-tag/index.ts:79-92 rewrites the same row field)
 const LOCK = '\uD83D\uDD12 '
 const MessageRowType = 1
+
+interface MediaModal {
+        openMediaModal(options: { initialSources: { uri: string }[] }): void
+}
 
 interface RowManager {
         prototype: { generate(args: { message?: any }): MessageRow }
@@ -102,6 +106,18 @@ export default plugin<{ jsonStorage: Settings }>({
                                         }),
                                         instead(messages, 'editMessage', function (args, original) {
                                                 if (!encryptOutgoing(args[0], args[2])) return Promise.resolve()
+                                                return Reflect.apply(original, this, args)
+                                        }),
+                                )
+                        }),
+                )
+
+                cleanup(
+                        // TEMP probe: which uri does the viewer get when a video is tapped? (module lookup as in picture-links/js/index.tsx:830)
+                        getModules(withProps<MediaModal>('openMediaModal'), modal => {
+                                cleanup(
+                                        instead(modal, 'openMediaModal', function (args, original) {
+                                                debug(`openMediaModal ${args[0]?.initialSources?.[0]?.uri}`)
                                                 return Reflect.apply(original, this, args)
                                         }),
                                 )

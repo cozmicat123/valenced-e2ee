@@ -85,9 +85,8 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                 variant="secondary"
                                                 size="sm"
                                                 text="Copy debug log"
-                                                onPress={async () => {
-                                                        const server = await callNativeMethod('cozmicat123.e2ee.mediaLog', []).catch(() => 'server log failed') // TEMP
-                                                        Clipboard.setString(`${debugText()}\nserver:\n${server}`)
+                                                onPress={() => {
+                                                        Clipboard.setString(debugText())
                                                         ToastActionCreators.open('cozmicat123.e2ee.copied', { text: 'Debug log copied' })
                                                 }}
                                         />

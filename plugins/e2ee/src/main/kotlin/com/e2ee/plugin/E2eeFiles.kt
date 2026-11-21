@@ -8,7 +8,6 @@ import android.app.AndroidAppHelper
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.security.NetworkSecurityPolicy
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CompletableFuture
@@ -21,7 +20,7 @@ internal object E2eeFiles {
 
     private val app get() = AndroidAppHelper.currentApplication()
     private val outDir get() = File(app.cacheDir, "e2ee-out")
-    val playDir get() = File(app.cacheDir, "e2ee-play") // decrypted videos, served by MediaServer, kept until Clear key or stop
+    val playDir get() = File(app.cacheDir, "e2ee-play") // decrypted videos, kept until Clear key or stop
 
     // "x.ext" -> "x.enc.ext", no extension -> "x.enc" (Aegires AttachmentViewFactory.java:72 looks for exactly this)
     private fun encName(original: String): String {
@@ -85,8 +84,7 @@ internal object E2eeFiles {
                 if (videoExt == null) {
                     result.complete(described(plaintext, w, h, false))
                 } else {
-                    val file = playable(plaintext, videoExt)
-                    result.complete(described(file, w, h, true) + ("url" to MediaServer.urlFor(file)))
+                    result.complete(described(playable(plaintext, videoExt), w, h, true))
                 }
             }
         })
@@ -96,9 +94,8 @@ internal object E2eeFiles {
     // Like Aegires wiping its plain folder when the cache is built: videos of an earlier run go on first use
     private val leftovers by lazy { playDir.listFiles()?.forEach { it.delete() } }
 
-    // Discord's player cannot play file:// and reads a file by its extension, and the cache names its temp files ".tmp".
-    // So a video moves to our own folder under its real extension (a move, nothing is left in the cache) and is served
-    // to the player by MediaServer.
+    // Discord's player cannot play a file:// video, so ours plays it (see playVideo). The cache names its temp files ".tmp",
+    // so the video moves to our own folder under its real extension (a move, nothing is left in the cache).
     private fun playable(temp: File, ext: String): File {
         leftovers
         val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
@@ -111,16 +108,9 @@ internal object E2eeFiles {
         val (width, height) = if (video) videoSize(file) else imageSize(file)
         return mapOf(
             "path" to file.absolutePath,
-            "info" to "${file.name} ${file.length()} ${head(file)} cleartext=${NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted("127.0.0.1")}", // TEMP diagnostic
             "w" to width.takeIf { it > 0 }?.toDouble(),
             "h" to height.takeIf { it > 0 }?.toDouble(),
         )
-    }
-
-    // TEMP diagnostic: bytes 4..8 of a valid mp4 read "ftyp"
-    private fun head(file: File): String = file.inputStream().use { i ->
-        val b = ByteArray(12)
-        if (i.read(b) < 12) "short" else String(b, 4, 4, Charsets.ISO_8859_1)
     }
 
     private fun imageSize(file: File): Pair<Int, Int> {
@@ -145,7 +135,6 @@ internal object E2eeFiles {
 
     // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies and played videos
     fun clear() {
-        MediaServer.stop()
         MediaCache.get(app).clearSensitive()
         outDir.listFiles()?.forEach { it.delete() }
         playDir.listFiles()?.forEach { it.delete() }

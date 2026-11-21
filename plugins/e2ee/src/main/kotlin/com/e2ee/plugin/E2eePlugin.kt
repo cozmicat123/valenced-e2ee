@@ -35,8 +35,6 @@ val e2eePlugin = plugin {
 
         registerNativeMethod("$id.hasKey") { _ -> E2ee.key != null }
 
-        registerNativeMethod("$id.mediaLog") { _ -> MediaServer.log() } // TEMP diagnostic
-
         registerNativeMethod("$id.clearMedia") { _ ->
             E2eeFiles.clear()
             Unit
