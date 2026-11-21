@@ -22,6 +22,8 @@ export interface Settings {
 
 export const ID = 'cozmicat123.e2ee'
 
+let attachmentLogged = false // TEMPORARY
+
 // Errors are shown as a toast, as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
 // Call shape: valenced-plugins better-invites/js/index.tsx:32, bio-emoji-button/js/picker.tsx:262
 const ToastKey = `${ID}.error`
@@ -200,6 +202,13 @@ export default plugin<{ jsonStorage: Settings }>({
                                         before(prototype, 'generate', args => {
                                                 const m = args[0]?.message
                                                 if (m) {
+                                                        // TEMPORARY: learn the attachment shape once, for the receive side
+                                                        const att = m.attachments?.[0]
+                                                        if (att && !attachmentLogged) {
+                                                                attachmentLogged = true
+                                                                debug(`row attachment keys=${Object.keys(att).join(',')} | message attach keys=${Object.keys(m).filter((k: string) => /attach|embed/i.test(k)).join(',')}`)
+                                                                debug(`row attachment filename=${att.filename} type=${att.contentType ?? att.content_type} urlType=${typeof att.url} proxy=${typeof (att.proxyURL ?? att.proxy_url)}`)
+                                                        }
                                                         decryptMessages([m], m.channelId)
                                                         const preview = m.referencedMessage?.message
                                                         if (preview) decryptPreview(preview)
