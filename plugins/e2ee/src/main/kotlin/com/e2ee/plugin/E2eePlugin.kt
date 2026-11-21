@@ -9,6 +9,7 @@
 package com.e2ee.plugin
 
 import android.app.AndroidAppHelper
+import android.graphics.BitmapFactory
 import android.net.Uri
 import app.valenced.plugins.plugin
 import app.valenced.xposed.api.registerNativeAsyncMethod
@@ -18,6 +19,9 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.crypto.SecretKey
+
+// Aegires ApiClient.java:52
+private const val MAX_UPLOAD_BYTES = 25L * 1024 * 1024
 
 // Same pattern as Aegires MessageCryptoHelper.java:14
 private val SIZE_TAG = Regex("^\\[sz:(\\d+),(\\d+)\\]")
@@ -72,7 +76,16 @@ private object E2ee {
                 result.complete(mapOf("error" to failure.toString()))
             }
             override fun onFile(plaintext: File) {
-                result.complete(mapOf("path" to plaintext.absolutePath))
+                // Images sent without a "[sz:W,H]" tag: read the size from the decrypted picture itself
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                if (w <= 0 || h <= 0) BitmapFactory.decodeFile(plaintext.absolutePath, bounds)
+                result.complete(
+                    mapOf(
+                        "path" to plaintext.absolutePath,
+                        "w" to bounds.outWidth.takeIf { it > 0 }?.toDouble(),
+                        "h" to bounds.outHeight.takeIf { it > 0 }?.toDouble(),
+                    ),
+                )
             }
         })
         return try {
@@ -100,6 +113,8 @@ private object E2ee {
             val app = AndroidAppHelper.currentApplication()
             stage = "dir"
             val dir = File(app.cacheDir, "e2ee-out").apply { mkdirs() }
+            // Uploads read these copies after sending, so only old ones are removed (and all on Clear key)
+            dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
             stage = "name"
             val file = File(dir, encName(FileNames.randomFor(name, mime)))
             out = file
@@ -107,6 +122,14 @@ private object E2ee {
             val source = Uri.parse(uri)
             val input = if (source.scheme == "content") app.contentResolver.openInputStream(source)
             else File(source.path ?: uri).inputStream()
+            stage = "size"
+            // Same rule as Aegires ApiClient.java:754-760 (size unknown = no check)
+            val size = if (source.scheme == "content") app.contentResolver.openAssetFileDescriptor(source, "r")?.use { it.length } ?: -1L
+            else File(source.path ?: uri).length()
+            if (size >= 0 && size + Crypto.fileOverhead(presetFor(channelId), size) > MAX_UPLOAD_BYTES) {
+                input?.close()
+                return mapOf("error" to "File too large for E2EE upload")
+            }
             stage = "crypto"
             val ok = input?.use { i ->
                 file.outputStream().use { o -> Crypto.encryptStream(i, o, k, presetFor(channelId), channelId, sender) }
@@ -163,9 +186,11 @@ val e2eePlugin = plugin {
             )
         }
 
-        // Aegires clearSensitive: forget decrypted pictures, delete decrypted files
+        // Aegires clearSensitive: forget decrypted pictures, delete decrypted files (and our encrypted upload copies)
         registerNativeMethod("$id.clearMedia") { _ ->
-            MediaCache.get(AndroidAppHelper.currentApplication()).clearSensitive()
+            val app = AndroidAppHelper.currentApplication()
+            MediaCache.get(app).clearSensitive()
+            File(app.cacheDir, "e2ee-out").listFiles()?.forEach { it.delete() }
             Unit
         }
 

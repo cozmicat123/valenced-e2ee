@@ -46,7 +46,9 @@ async function open(a: Attachment, channelId: string, authorId: string | null, w
                         return a
                 }
                 const url = `file://${r.path}`
-                return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(w && h ? { width: w, height: h } : {}) }
+                const width = w || r.w
+                const height = h || r.h
+                return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(width && height ? { width, height } : {}) }
         } catch (e) {
                 debug(`decryptFile ${a.filename} threw: ${String(e)}`)
                 return a
