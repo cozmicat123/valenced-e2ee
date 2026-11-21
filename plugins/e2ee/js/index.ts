@@ -38,7 +38,7 @@ declare module '@valenced/modules/native' {
                 ]
                 'cozmicat123.e2ee.decryptFile': [
                         args: [url: string, channelId: string, authorId: string | null, size: number, w: number, h: number, video: boolean],
-                        returnValue: { path?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
+                        returnValue: { path?: string; info?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
                 ]
                 'cozmicat123.e2ee.clearMedia': [args: [], returnValue: null]
                 'cozmicat123.e2ee.decrypt': [

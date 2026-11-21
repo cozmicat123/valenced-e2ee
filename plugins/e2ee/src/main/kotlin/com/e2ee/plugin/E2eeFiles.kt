@@ -91,9 +91,16 @@ internal object E2eeFiles {
         val (width, height) = if (video) videoSize(file) else imageSize(file)
         return mapOf(
             "path" to file.absolutePath,
+            "info" to "${file.name} ${file.length()} ${head(file)}", // TEMP diagnostic
             "w" to width.takeIf { it > 0 }?.toDouble(),
             "h" to height.takeIf { it > 0 }?.toDouble(),
         )
+    }
+
+    // TEMP diagnostic: bytes 4..8 of a valid mp4 read "ftyp"
+    private fun head(file: File): String = file.inputStream().use { i ->
+        val b = ByteArray(12)
+        if (i.read(b) < 12) "short" else String(b, 4, 4, Charsets.ISO_8859_1)
     }
 
     private fun imageSize(file: File): Pair<Int, Int> {

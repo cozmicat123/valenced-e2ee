@@ -49,6 +49,7 @@ async function open(a: Attachment, channelId: string, authorId: string | null, w
                         return a
                 }
                 const url = `file://${r.path}`
+                if (video) debug(`video ${r.info} ${url} ${a.content_type}`) // TEMP diagnostic
                 const width = w || r.w
                 const height = h || r.h
                 return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(width && height ? { width, height } : {}) }
