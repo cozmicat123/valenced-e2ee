@@ -36,20 +36,20 @@ export const setSize = (id: string, w: number, h: number) => sizes.set(id, [w, h
 const isEncrypted = (name: string) => name.includes('.enc.') || name.endsWith('.enc')
 const plainName = (name: string) => name.replace('.enc', '')
 // Same list as Aegires AttachmentViewFactory.isVideoFilename (screen/AttachmentViewFactory.java:75-84)
-const isVideo = (name: string) => /\.(mp4|mov|webm|m4v|3gp)$/i.test(name)
+const videoExt = (name: string) => /\.(mp4|mov|webm|m4v|3gp)$/i.exec(name)?.[1].toLowerCase() ?? null
 
 async function open(a: Attachment, channelId: string, authorId: string | null, w: number, h: number): Promise<Attachment> {
         // Aegires shows only pictures and videos; other encrypted files stay as they are
-        const video = isVideo(a.filename)
-        if (!isEncrypted(a.filename) || !(video || a.content_type?.startsWith('image/'))) return a
+        const ext = videoExt(a.filename)
+        if (!isEncrypted(a.filename) || !(ext || a.content_type?.startsWith('image/'))) return a
         try {
-                const r = await callNativeMethod('cozmicat123.e2ee.decryptFile', [a.url, channelId, authorId, a.size ?? 0, w, h, video])
+                const r = await callNativeMethod('cozmicat123.e2ee.decryptFile', [a.url, channelId, authorId, a.size ?? 0, w, h, ext])
                 if (!r.path) {
                         debug(`decryptFile ${a.filename}: ${JSON.stringify(r)}`)
                         return a
                 }
                 const url = `file://${r.path}`
-                if (video) debug(`video ${r.info} ${url} ${a.content_type}`) // TEMP diagnostic
+                if (ext) debug(`video ${r.info} ${url} ${a.content_type}`) // TEMP diagnostic
                 const width = w || r.w
                 const height = h || r.h
                 return { ...a, url, proxy_url: url, filename: plainName(a.filename), ...(width && height ? { width, height } : {}) }

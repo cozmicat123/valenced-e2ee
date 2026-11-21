@@ -20,6 +20,7 @@ internal object E2eeFiles {
 
     private val app get() = AndroidAppHelper.currentApplication()
     private val outDir get() = File(app.cacheDir, "e2ee-out")
+    private val playDir get() = File(app.cacheDir, "e2ee-play") // decrypted videos, kept until Clear key or stop
 
     // "x.ext" -> "x.enc.ext", no extension -> "x.enc" (Aegires AttachmentViewFactory.java:72 looks for exactly this)
     private fun encName(original: String): String {
@@ -63,7 +64,8 @@ internal object E2eeFiles {
     }
 
     // Downloads and decrypts a received picture or video into a temp file. Waits on this worker thread, which is off the RN thread.
-    fun decrypt(url: String, channelId: String, sender: String?, size: Long, w: Int, h: Int, video: Boolean): Map<String, Any?> {
+    fun decrypt(url: String, channelId: String, sender: String?, size: Long, w: Int, h: Int, videoExt: String?): Map<String, Any?> {
+        val video = videoExt != null
         val key = E2ee.requireKey(channelId)
         val from = E2ee.requireSender(sender)
         val result = CompletableFuture<Map<String, Any?>>()
@@ -79,10 +81,17 @@ internal object E2eeFiles {
                 result.complete(mapOf("error" to failure.toString()))
             }
             override fun onFile(plaintext: File) {
-                result.complete(described(plaintext, w, h, video))
+                result.complete(described(if (videoExt != null) playable(plaintext, videoExt) else plaintext, w, h, video))
             }
         })
         return result.get(DECRYPT_WAIT_S, TimeUnit.SECONDS)
+    }
+
+    // Discord's player reads a file by its extension and the cache names its temp files ".tmp", so a video moves to our
+    // own folder under its real extension (a move, nothing is left in the cache).
+    private fun playable(temp: File, ext: String): File {
+        val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
+        return if (temp.renameTo(target)) target else temp
     }
 
     // Pictures sent without a "[sz:W,H]" tag, and videos (which never have one): read the size from the decrypted file itself
@@ -123,9 +132,10 @@ internal object E2eeFiles {
         }
     }
 
-    // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies
+    // Aegires clearSensitive: forget decrypted pictures and delete their files, plus our ciphertext upload copies and played videos
     fun clear() {
         MediaCache.get(app).clearSensitive()
         outDir.listFiles()?.forEach { it.delete() }
+        playDir.listFiles()?.forEach { it.delete() }
     }
 }
