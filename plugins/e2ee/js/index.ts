@@ -41,6 +41,7 @@ declare module '@valenced/modules/native' {
                         returnValue: { path?: string; url?: string; info?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
                 ]
                 'cozmicat123.e2ee.clearMedia': [args: [], returnValue: null]
+                'cozmicat123.e2ee.mediaLog': [args: [], returnValue: string] // TEMP diagnostic
                 'cozmicat123.e2ee.decrypt': [
                         args: [items: [content: unknown, channelId: string, authorId: string | null][]],
                         returnValue: { text: string | null; enc: boolean; w: number | null; h: number | null }[],

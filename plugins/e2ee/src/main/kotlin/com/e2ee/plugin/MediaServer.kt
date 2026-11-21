@@ -16,6 +16,18 @@ import kotlin.concurrent.thread
 internal object MediaServer {
     private var server: ServerSocket? = null
 
+    // TEMP diagnostic: what the player asked for and what was sent
+    private val requests = ArrayDeque<String>()
+
+    @Synchronized
+    private fun note(line: String) {
+        requests.addLast(line)
+        if (requests.size > 20) requests.removeFirst()
+    }
+
+    @Synchronized
+    fun log(): String = requests.joinToString("\n").ifEmpty { "no requests" }
+
     // http://127.0.0.1:<port>/<file name>. The server starts on first use.
     @Synchronized
     fun urlFor(file: File): String {
@@ -43,7 +55,7 @@ internal object MediaServer {
                 try {
                     client.use { serve(it) }
                 } catch (e: IOException) {
-                    // the player closed the connection (seeking does this)
+                    note("closed: ${e.message}") // the player closed the connection (seeking does this)
                 }
             }
         }
@@ -58,6 +70,7 @@ internal object MediaServer {
             if (line.isNullOrEmpty()) break
             if (line.startsWith("Range:", ignoreCase = true)) range = line.substring(6).trim()
         }
+        note("${request.take(2).joinToString(" ")} range=$range")
         val out = client.getOutputStream()
         val dir = E2eeFiles.playDir
         val file = request.getOrNull(1)?.removePrefix("/")?.let { File(dir, it) }?.takeIf { it.parentFile == dir && it.isFile }
@@ -80,16 +93,22 @@ internal object MediaServer {
         val partial = if (bytes != null) "Content-Range: bytes $start-$end/$total\r\n" else ""
         respond(out, if (bytes != null) "206 Partial Content" else "200 OK", end - start + 1, "Content-Type: $type\r\nAccept-Ranges: bytes\r\n$partial")
         if (request[0] == "HEAD") return
-        RandomAccessFile(file, "r").use { f ->
-            f.seek(start)
-            val buffer = ByteArray(64 * 1024)
-            var left = end - start + 1
-            while (left > 0) {
-                val n = f.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
-                if (n < 0) break
-                out.write(buffer, 0, n)
-                left -= n
+        var sent = 0L
+        try {
+            RandomAccessFile(file, "r").use { f ->
+                f.seek(start)
+                val buffer = ByteArray(64 * 1024)
+                var left = end - start + 1
+                while (left > 0) {
+                    val n = f.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                    if (n < 0) break
+                    out.write(buffer, 0, n)
+                    left -= n
+                    sent += n
+                }
             }
+        } finally {
+            note("sent $sent of ${end - start + 1}")
         }
     }
 
