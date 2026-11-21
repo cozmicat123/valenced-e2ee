@@ -3,7 +3,8 @@
 import { Dispatcher } from '@valenced/discord/common/flux'
 import { Stores } from '@valenced/discord/flux'
 import { callNativeMethodSync } from '@valenced/modules/native'
-import { type Attachment, attachFiles, resetFiles, setSize } from './files'
+import { attachFiles, resetFiles, setSize } from './files'
+import type { Attachment } from './files'
 import type { DiscordModules } from '@valenced/discord/types'
 
 // Flux message objects (snake_case, as sent by the gateway)
