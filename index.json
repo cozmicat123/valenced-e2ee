@@ -9,7 +9,7 @@
       "author": "cozmicat123",
       "channels": {
         "latest": "1.0.0",
-        "beta": "2.0.0-b00004"
+        "beta": "2.0.0-b00005"
       },
       "versions": {
         "1.0.0": {
@@ -76,6 +76,21 @@
           "url": "https://cozmicat123.github.io/valenced-e2ee/pool/cozmicat123.e2ee@2.0.0-b00004.zip",
           "sha256": "2b72592c7b8a8cc42412da1f964d0a3d0393227027fd6f31300ab03224c4fa0a",
           "size": 53891,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {
+              "version": "*"
+            },
+            "valenced.settings": {},
+            "valenced.settings.plugins": {}
+          }
+        },
+        "2.0.0-b00005": {
+          "url": "https://cozmicat123.github.io/valenced-e2ee/pool/cozmicat123.e2ee@2.0.0-b00005.zip",
+          "sha256": "87fba92d33707e11b5af31e26d892279a01027677234a492a4b57ba1f4c9dd4a",
+          "size": 57110,
           "dependencies": {
             "valenced.api": {
               "version": ">=1 <2"
