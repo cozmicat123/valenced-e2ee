@@ -8,6 +8,7 @@ import android.app.AndroidAppHelper
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.security.NetworkSecurityPolicy
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CompletableFuture
@@ -87,9 +88,13 @@ internal object E2eeFiles {
         return result.get(DECRYPT_WAIT_S, TimeUnit.SECONDS)
     }
 
+    // Like Aegires wiping its plain folder when the cache is built: videos of an earlier run go on first use
+    private val leftovers by lazy { playDir.listFiles()?.forEach { it.delete() } }
+
     // Discord's player reads a file by its extension and the cache names its temp files ".tmp", so a video moves to our
     // own folder under its real extension (a move, nothing is left in the cache).
     private fun playable(temp: File, ext: String): File {
+        leftovers
         val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
         return if (temp.renameTo(target)) target else temp
     }
@@ -100,7 +105,7 @@ internal object E2eeFiles {
         val (width, height) = if (video) videoSize(file) else imageSize(file)
         return mapOf(
             "path" to file.absolutePath,
-            "info" to "${file.name} ${file.length()} ${head(file)}", // TEMP diagnostic
+            "info" to "${file.name} ${file.length()} ${head(file)} cleartext=${NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted("127.0.0.1")}", // TEMP diagnostic
             "w" to width.takeIf { it > 0 }?.toDouble(),
             "h" to height.takeIf { it > 0 }?.toDouble(),
         )
