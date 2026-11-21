@@ -14,7 +14,9 @@ import app.valenced.plugins.plugin
 import app.valenced.xposed.api.registerNativeAsyncMethod
 import app.valenced.xposed.api.registerNativeMethod
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.crypto.SecretKey
 
 // Same pattern as Aegires MessageCryptoHelper.java:14
@@ -52,6 +54,32 @@ private object E2ee {
         if (Crypto.utf8Length(plain) > max) return null to "Too long for ${p.label} (max $max bytes)"
         val out = Crypto.encrypt(plain, k, p, channelId, sender) ?: return null to "Encryption failed"
         return out to null
+    }
+
+    // Downloads and decrypts a received attachment with Aegires' own MediaCache (limits, retries, disk cache), as a temp file.
+    // Waits for the callback on this worker thread, which is off the RN thread.
+    fun decryptFile(url: String, channelId: String, sender: String?, size: Long, w: Int, h: Int): Map<String, Any?> {
+        val k = keyFor(channelId) ?: return mapOf("error" to "no key")
+        if (sender == null) return mapOf("error" to "no sender")
+        val result = CompletableFuture<Map<String, Any?>>()
+        val spec = MediaCache.Spec.encryptedImage(url, k, channelId, sender, size, w, h)
+        MediaCache.get(AndroidAppHelper.currentApplication()).decryptToTemp(spec, object : MediaCache.TempCallback {
+            override fun onProgress(done: Long, total: Long) {}
+            override fun onNeedsConfirm(totalBytes: Long) {
+                result.complete(mapOf("confirm" to totalBytes.toDouble()))
+            }
+            override fun onFailure(failure: MediaCache.Failure) {
+                result.complete(mapOf("error" to failure.toString()))
+            }
+            override fun onFile(plaintext: File) {
+                result.complete(mapOf("path" to plaintext.absolutePath))
+            }
+        })
+        return try {
+            result.get(180, TimeUnit.SECONDS)
+        } catch (t: Exception) {
+            mapOf("error" to "timeout")
+        }
     }
 
     // "x.ext" -> "x.enc.ext", no extension -> "x.enc" (Aegires AttachmentViewFactory.java:72 looks for exactly this)
@@ -122,6 +150,24 @@ val e2eePlugin = plugin {
         }
 
         registerNativeMethod("$id.hasKey") { _ -> E2ee.key != null }
+
+        // [url, channelId, selfId?, size, w, h] -> { path } | { confirm: bytes } | { error }
+        registerNativeAsyncMethod("$id.decryptFile") { args ->
+            E2ee.decryptFile(
+                args[0] as String,
+                args[1] as String,
+                args[2] as String?,
+                (args[3] as Number).toLong(),
+                (args[4] as Number).toInt(),
+                (args[5] as Number).toInt(),
+            )
+        }
+
+        // Aegires clearSensitive: forget decrypted pictures, delete decrypted files
+        registerNativeMethod("$id.clearMedia") { _ ->
+            MediaCache.get(AndroidAppHelper.currentApplication()).clearSensitive()
+            Unit
+        }
 
         // [channelId] -> Boolean
         registerNativeMethod("$id.encryptOn") { args -> E2ee.encryptOn(args[0] as String) }
