@@ -4,15 +4,14 @@
 //  - Flux payload rewrite: clear-urls/index.tsx:104-111 (MESSAGE_CREATE). The LOAD_MESSAGES_SUCCESS shape ({ messages, channelId })
 //    has no human source; it is only verified by working on device
 //  - jsonStorage wiring: anonymous-file-names/js/index.ts:39-44
-// Behaviour mirrors cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt (Aegires MessageCryptoHelper).
-import { ToastActionCreators } from '@valenced/discord/actions'
-import { onFluxEventDispatched, Stores } from '@valenced/discord/flux'
+// Outgoing side (text and files) is in send.ts. Behaviour mirrors cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt (Aegires MessageCryptoHelper).
+import { onFluxEventDispatched } from '@valenced/discord/flux'
 import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
-import { debug } from './debug'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
+import { createSender } from './send'
 import SettingsComponent from './settings'
 
 export interface Settings {
@@ -22,10 +21,6 @@ export interface Settings {
 
 export const ID = 'cozmicat123.e2ee'
 
-// Errors are shown as a toast, as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
-// Call shape: valenced-plugins better-invites/js/index.tsx:32, bio-emoji-button/js/picker.tsx:262
-const ToastKey = `${ID}.error`
-
 declare module '@valenced/modules/native' {
         interface NativeMethods {
                 'cozmicat123.e2ee.configure': [args: [enabled: boolean, preset: number], returnValue: null]
@@ -34,7 +29,7 @@ declare module '@valenced/modules/native' {
                 'cozmicat123.e2ee.hasKey': [args: [], returnValue: boolean]
                 'cozmicat123.e2ee.encrypt': [
                         args: [channelId: string, plain: string, selfId: string | null],
-                        returnValue: { text: string | null; error: string | null } | null,
+                        returnValue: { text?: string; error?: string } | null,
                 ]
                 'cozmicat123.e2ee.encryptOn': [args: [channelId: string], returnValue: boolean]
                 'cozmicat123.e2ee.encryptFile': [
@@ -90,93 +85,9 @@ export default plugin<{ jsonStorage: Settings }>({
                         return
                 }
 
-                // Fails closed: returns false when the message must not be sent
                 const configureNative = () =>
                         callNativeMethodSync('cozmicat123.e2ee.configure', [!!storage.cache?.enabled, storage.cache?.preset ?? 2])
-                const selfIdOf = (): string | null => (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
-
-                const encryptOutgoing = (channelId: string, data: { content?: string } | undefined) => {
-                        const plain = data?.content?.trim()
-                        if (!data || !plain) return true
-                        configureNative()
-                        const selfId = selfIdOf()
-                        const res = callNativeMethodSync('cozmicat123.e2ee.encrypt', [channelId, plain, selfId])
-                        if (res === null) return true // encryption off for this channel
-                        if (res.error || !res.text) {
-                                ToastActionCreators.open(ToastKey, { text: res.error ?? 'Encryption failed' })
-                                return false
-                        }
-                        data.content = res.text
-                        return true
-                }
-
-                // v2: with files attached in an encrypted chat the picked file is replaced by its Aegires-format
-                // ciphertext copy right before sending (native encryptFile). Aegires sends one file per message, so
-                // more than one file is refused. Fails closed: on any problem nothing is sent.
-                // AI-written; the CloudUpload field names come from datamined Discord code and are checked on device.
-                const sendWithFile = async (self: unknown, args: any[], original: (...a: any[]) => unknown, files: any[]) => {
-                        const channelId: string = args[0]
-                        configureNative()
-                        if (!callNativeMethodSync('cozmicat123.e2ee.encryptOn', [channelId])) return Reflect.apply(original, self, args)
-                        if (files.length > 1) {
-                                ToastActionCreators.open(ToastKey, { text: 'Encrypted chats take one file per message' })
-                                return
-                        }
-                        // The picked file's location lives in the CloudUpload's `item` (the object the pick toasts showed), not on the upload
-                        const f = files[0]
-                        const item = f.item
-                        if (typeof item?.uri !== 'string') {
-                                debug(`file item has no uri: item keys=${Object.keys(item ?? {}).join(',')}`)
-                                ToastActionCreators.open(ToastKey, { text: 'Unknown attachment format, file not sent' })
-                                return
-                        }
-                        // Aegires puts the picture size in front of the caption before encrypting it (MessageListScreen.java:455-470),
-                        // also when there is no caption. Done on a copy so the original draft stays as it was.
-                        const tag = f.isImage && item.width > 0 && item.height > 0 ? `[sz:${item.width},${item.height}]` : ''
-                        const message = { ...args[1], content: tag + (args[1]?.content ?? '') }
-                        if (!encryptOutgoing(channelId, message)) return
-                        let res: { path?: string; name?: string; size?: number; error?: string } | undefined
-                        try {
-                                res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
-                                        item.uri,
-                                        f.filename ?? null,
-                                        f.mimeType ?? null,
-                                        channelId,
-                                        selfIdOf(),
-                                ])
-                        } catch (e) {
-                                debug(`encryptFile threw: ${String(e)}`)
-                                ToastActionCreators.open(ToastKey, { text: 'File encryption failed (see Copy debug log in settings)' })
-                                return
-                        }
-                        if (!res || res.error || !res.path || !res.name || !res.size) {
-                                debug(`encryptFile result: ${JSON.stringify(res)}`)
-                                ToastActionCreators.open(ToastKey, { text: res?.error ?? 'File encryption failed' })
-                                return
-                        }
-                        // Copy of the upload object (prototype kept); the original stays untouched for draft recovery
-                        const uri = `file://${res.path}`
-                        const swapped = Object.assign(Object.create(Object.getPrototypeOf(f)), f, {
-                                item: { ...item, uri, originalUri: uri, filename: res.name, mimeType: 'application/octet-stream' },
-                                filename: res.name,
-                                mimeType: 'application/octet-stream',
-                                currentSize: res.size,
-                                preCompressionSize: res.size,
-                                reactNativeFilePrepped: true,
-                        })
-                        const next = [...args]
-                        next[1] = message
-                        next[3] = { ...args[3], attachmentsToUpload: [swapped] }
-                        debug(`encrypted ${res.name} ${res.size}`)
-                        try {
-                                const sent = await Reflect.apply(original, self, next)
-                                debug(`send returned ${typeof sent}`)
-                                return sent
-                        } catch (e) {
-                                debug(`send threw: ${String(e)}`)
-                                throw e
-                        }
-                }
+                const { encryptOutgoing, sendWithFile } = createSender(configureNative)
 
                 cleanup(
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
