@@ -16,6 +16,7 @@ internal object E2ee {
     @Volatile var key: SecretKey? = null
     @Volatile var enabled = false
     @Volatile var preset: Crypto.Preset = Crypto.Preset.AES256
+    @Volatile var largeMedia = true // skip Aegires' ask-first size limit for received media (MediaCache.Spec.force)
 
     // Forced-channel keys are derived once per channel; never start two 64 MiB derivations for one channel
     private val preparing = ConcurrentHashMap.newKeySet<String>()

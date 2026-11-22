@@ -35,6 +35,12 @@ val e2eePlugin = plugin {
 
         registerNativeMethod("$id.hasKey") { _ -> E2ee.key != null }
 
+        // [on: Boolean]: download received media over Aegires' automatic size limit without asking
+        registerNativeMethod("$id.largeMedia") { args ->
+            E2ee.largeMedia = args[0] as Boolean
+            Unit
+        }
+
         registerNativeMethod("$id.clearMedia") { _ ->
             E2eeFiles.clear()
             Unit

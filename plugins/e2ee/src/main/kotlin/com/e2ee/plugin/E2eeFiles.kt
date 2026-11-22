@@ -78,6 +78,7 @@ internal object E2eeFiles {
         // Same choice as Aegires EncryptedMediaSlot.java:121-124 (video limits differ)
         val spec = if (video) MediaCache.Spec.encryptedVideo(url, key, channelId, from, size, w)
         else MediaCache.Spec.encryptedImage(url, key, channelId, from, size, w, h)
+        spec.force = E2ee.largeMedia
         MediaCache.get(app).decryptToTemp(spec, object : MediaCache.TempCallback {
             override fun onProgress(done: Long, total: Long) {}
             override fun onNeedsConfirm(totalBytes: Long) {

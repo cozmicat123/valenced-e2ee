@@ -18,6 +18,7 @@ import SettingsComponent from './settings'
 export interface Settings {
         enabled: boolean
         preset: number // Crypto.Preset index: 0 = AES-128, 1 = AES-192, 2 = AES-256
+        largeMedia?: boolean // absent in older saves, means on
 }
 
 export const ID = 'cozmicat123.e2ee'
@@ -28,6 +29,7 @@ declare module '@valenced/modules/native' {
                 'cozmicat123.e2ee.setKey': [args: [password: string], returnValue: boolean]
                 'cozmicat123.e2ee.clearKey': [args: [], returnValue: null]
                 'cozmicat123.e2ee.hasKey': [args: [], returnValue: boolean]
+                'cozmicat123.e2ee.largeMedia': [args: [on: boolean], returnValue: null]
                 'cozmicat123.e2ee.encrypt': [
                         args: [channelId: string, plain: string, selfId: string | null],
                         returnValue: { text?: string; error?: string } | null,
@@ -81,6 +83,7 @@ export default plugin<{ jsonStorage: Settings }>({
                 storage.get().then(
                         s => {
                                 if (s.enabled) storage.set({ enabled: false })
+                                callNativeMethodSync('cozmicat123.e2ee.largeMedia', [s.largeMedia ?? true])
                         },
                         e => plugin.reportError(e),
                 )

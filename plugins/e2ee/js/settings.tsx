@@ -22,7 +22,7 @@ const { Button, Stack, TableRadioGroup, TableRadioRow, TableRowGroup, TableSwitc
 type Props = ComponentProps<PluginSettingsComponent<{ jsonStorage: Settings }>>
 
 export default function SettingsComponent({ api: { jsonStorage: storage } }: Props) {
-        const { enabled, preset } = storage.use()!
+        const { enabled, preset, largeMedia = true } = storage.use()!
         const [password, setPassword] = useState('')
         const [error, setError] = useState('')
         const [hasKey, setHasKey] = useState(false)
@@ -101,6 +101,17 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                         // Aliucord plugin does the same: no encrypting until a key exists
                                                         if (v && !hasKey) return setError('Set a key first')
                                                         storage.set({ enabled: v })
+                                                }}
+                                        />
+                                </TableRowGroup>
+                                <TableRowGroup title="Media">
+                                        <TableSwitchRow
+                                                label="Download large media automatically"
+                                                subLabel="Pictures over 6 MiB and videos over 4 MiB. Off keeps them as encrypted files."
+                                                value={largeMedia}
+                                                onValueChange={(v: boolean) => {
+                                                        storage.set({ largeMedia: v })
+                                                        callNativeMethod('cozmicat123.e2ee.largeMedia', [v]).then(() => redecrypt())
                                                 }}
                                         />
                                 </TableRowGroup>
