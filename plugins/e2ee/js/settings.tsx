@@ -10,13 +10,13 @@ import { Clipboard } from '@valenced/externals/react-native-clipboard'
 import { callNativeMethod } from '@valenced/modules/native'
 import { useEffect, useState } from 'react'
 import { ScrollView, Text } from 'react-native'
-import type { PluginSettingsComponent } from '@valenced/plugins/types'
-import type { ComponentProps } from 'react'
 import { debugText } from './debug'
 import { applyKey } from './key'
 import { redecrypt } from './messages'
 import { toast } from './toast'
 import type { Settings } from '.'
+import type { PluginSettingsComponent } from '@valenced/plugins/types'
+import type { ComponentProps } from 'react'
 
 const { Button, Stack, TableRadioGroup, TableRadioRow, TableRowGroup, TableSwitchRow, TextInput } = Design
 

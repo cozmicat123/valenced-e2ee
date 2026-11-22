@@ -13,10 +13,12 @@ import android.widget.MediaController
 import android.widget.VideoView
 import java.io.File
 
-object VideoPlayer {
+internal object VideoPlayer {
     /** Plays the video behind [uri] (the poster address Discord's viewer was opened with). False for anything else. */
     fun play(activity: Activity, uri: String): Boolean {
         val file = E2eeFiles.videoFor(uri) ?: return false
+        // The activity was captured once at start; after a restart of it a dialog on it would crash the app
+        if (activity.isFinishing || activity.isDestroyed) return false
         activity.runOnUiThread { show(activity, file) }
         return true
     }

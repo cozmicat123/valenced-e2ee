@@ -27,7 +27,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "valenced-plugin-template"
+rootProject.name = "valenced-e2ee"
 
 val pluginRoots = listOf("plugins", "themes")
 

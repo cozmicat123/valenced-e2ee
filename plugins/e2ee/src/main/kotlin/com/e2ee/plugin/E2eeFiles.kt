@@ -106,7 +106,8 @@ internal object E2eeFiles {
     private fun playable(temp: File, ext: String): File {
         leftovers
         val target = File(playDir.apply { mkdirs() }, "${temp.nameWithoutExtension}.$ext")
-        return if (temp.renameTo(target)) target else temp
+        if (!temp.renameTo(target)) throw E2eeError("Could not store the video")
+        return target
     }
 
     // Discord cannot play a local video (inline or in its viewer), so the message shows a picture of the video's first frame

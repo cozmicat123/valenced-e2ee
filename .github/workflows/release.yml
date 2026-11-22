@@ -1,11 +1,16 @@
 # A plugin is released when the published pool doesn't have `<id>@<version>.zip` for its manifest version.
 # The pool contains all relevant data. Git tags and GitHub releases are created for changelogs only.
+#
+# main: the manifest version is released as it is (stable, channel `latest`).
+# valenced-port: a rolling beta. The version is changed inside this run only, to `<manifest version>-b<run number>`
+# (zero-padded, so builds stay in order), and no tag or GitHub Release is written. A labeled version sorts below its bare
+# version, so after a stable release the manifest version on valenced-port has to be raised before the next beta.
 
 name: Release plugins
 
 on:
   push:
-    branches: [main]
+    branches: [main, valenced-port]
   workflow_dispatch:
 
 concurrency:
@@ -36,8 +41,18 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+          cache: gradle
 
       - run: bun install
+
+      - name: Version this build as a beta
+        if: github.ref_name != 'main'
+        run: |
+          manifest=plugins/e2ee/manifest.json
+          version="$(jq -r .version "$manifest")-b$(printf '%05d' "$GITHUB_RUN_NUMBER")"
+          jq --arg v "$version" '.version = $v' "$manifest" > manifest.tmp
+          mv manifest.tmp "$manifest"
+          echo "Publishing $version"
 
       - name: Check out the published pool
         run: .github/scripts/checkout-pool.sh
@@ -57,7 +72,7 @@ jobs:
         run: .github/scripts/publish-pool.sh
 
       - name: Tag and write changelogs
-        if: steps.plan.outputs.count != '0'
+        if: github.ref_name == 'main' && steps.plan.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/tag-releases.sh

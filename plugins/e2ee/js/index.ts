@@ -22,8 +22,6 @@ export interface Settings {
         largeMedia?: boolean // absent in older saves, means on
 }
 
-export const ID = 'cozmicat123.e2ee'
-
 declare module '@valenced/modules/native' {
         interface NativeMethods {
                 'cozmicat123.e2ee.configure': [args: [enabled: boolean, preset: number], returnValue: null]
