@@ -3,6 +3,8 @@
 import { Dispatcher } from '@valenced/discord/common/flux'
 import { Stores } from '@valenced/discord/flux'
 import { callNativeMethodSync } from '@valenced/modules/native'
+import { attachFiles, resetFiles, setSize } from './files'
+import type { Attachment } from './files'
 import type { DiscordModules } from '@valenced/discord/types'
 
 // Flux message objects (snake_case, as sent by the gateway)
@@ -13,9 +15,10 @@ export interface FluxMessage {
         author?: { id?: string }
         referenced_message?: FluxMessage | null
         messageReference?: { message_id?: string }
+        attachments?: Attachment[]
 }
 
-// Messages that were sent encrypted (Aegires Message.encrypted): id -> original ciphertext plus what decrypting needs.
+// Messages that were sent encrypted (Aegires model/Message.java:17 and 36): id -> original ciphertext plus what decrypting needs.
 // Kept because decrypting replaces the content in place, and a wrong key or Clear key must be able to lock the row (and
 // reply previews of it) again. Reply previews are stored too. Capped.
 interface Sealed {
@@ -43,22 +46,27 @@ export function decryptMessages(messages: FluxMessage[], fallbackChannel?: strin
                 add(m, fallbackChannel)
                 add(m.referenced_message, m.channel_id ?? fallbackChannel)
         }
-        if (!items.length) return
-        let out: { text: string | null; enc: boolean }[]
+        const attach = () => {
+                for (const m of messages) attachFiles(m, fallbackChannel)
+        }
+        if (!items.length) return attach()
+        let out: { text: string | null; enc: boolean; w: number | null; h: number | null }[]
         try {
                 out = callNativeMethodSync('cozmicat123.e2ee.decrypt', [items])
         } catch (e) {
                 console.warn('[e2ee] decrypt failed', e)
                 return
         }
-        out.forEach(({ text, enc }, i) => {
+        out.forEach(({ text, enc, w, h }, i) => {
                 if (text !== null) targets[i].content = text
                 const id = targets[i].id
+                if (id && w && h) setSize(id, w, h)
                 if (enc && id) {
                         encrypted.set(id, { cipher: items[i][0] as string, channelId: items[i][1], authorId: items[i][2] })
                         if (encrypted.size > MAX_ENCRYPTED) encrypted.delete(encrypted.keys().next().value!)
                 }
         })
+        attach()
 }
 
 // Reply preview inside a row record (row.message.referencedMessage.message; show-tag/index.ts:82-83, mention-avatars/js/index.ts:43).
@@ -84,11 +92,13 @@ export function redecrypt() {
         }>
         const channelId = SelectedChannelStore.getChannelId()
         if (!channelId) return
+        resetFiles()
 
         const MessageStore = Stores.MessageStore as DiscordModules.Flux.Store<{
                 getMessages(channelId: string): { toArray(): FluxMessage[] }
         }>
-        for (const { id, content, author, messageReference } of MessageStore.getMessages(channelId).toArray()) {
+        for (const message of MessageStore.getMessages(channelId).toArray()) {
+                const { id, content, author, messageReference } = message
                 // Plain rows have no ciphertext. Already-decrypted rows go back through theirs, so a wrong key or
                 // Clear key shows them locked again, as in Aegires.
                 const cipher = looksEncrypted(content) ? content : id ? encrypted.get(id)?.cipher : undefined
@@ -99,6 +109,7 @@ export function redecrypt() {
                         decryptMessages([copy])
                         next = copy.content ?? content
                 }
+                attachFiles(message, channelId)
                 // A reply to an encrypted message must rebuild its row too, or its preview keeps the old text.
                 const repliesToEncrypted = !!messageReference?.message_id && encrypted.has(messageReference.message_id)
                 if (next === content && !repliesToEncrypted) continue

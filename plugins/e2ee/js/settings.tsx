@@ -2,23 +2,28 @@
 //  - page shell and TextInput/Button: anonymous-file-names/js/settings.tsx:1-71
 //  - TableSwitchRow: better-chat-buttons/js/settings.tsx:56-68
 //  - TableRadioGroup/TableRadioRow: better-chat-buttons/js/settings.tsx:81-95
+//  - Clipboard.setString: link-alert-copy/index.tsx:47, developer-kit AssetBrowserSettingScreen.tsx:178
 // Texts and rules mirror aliucord-e2ee@aegires-sync E2eeSettings.kt (password 8-256, preset radios).
 import Page from '@valenced/components/Page'
 import { Design } from '@valenced/discord/design'
+import { Clipboard } from '@valenced/externals/react-native-clipboard'
 import { callNativeMethod } from '@valenced/modules/native'
 import { useEffect, useState } from 'react'
 import { ScrollView, Text } from 'react-native'
+import { debugText } from './debug'
+import { applyKey } from './key'
+import { redecrypt } from './messages'
+import { toast } from './toast'
+import type { Settings } from '.'
 import type { PluginSettingsComponent } from '@valenced/plugins/types'
 import type { ComponentProps } from 'react'
-import { redecrypt } from './messages'
-import type { Settings } from '.'
 
 const { Button, Stack, TableRadioGroup, TableRadioRow, TableRowGroup, TableSwitchRow, TextInput } = Design
 
 type Props = ComponentProps<PluginSettingsComponent<{ jsonStorage: Settings }>>
 
 export default function SettingsComponent({ api: { jsonStorage: storage } }: Props) {
-        const { enabled, preset } = storage.use()!
+        const { enabled, preset, largeMedia = true } = storage.use()!
         const [password, setPassword] = useState('')
         const [error, setError] = useState('')
         const [hasKey, setHasKey] = useState(false)
@@ -31,21 +36,15 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
 
         const setKey = async () => {
                 setBusy(true)
-                try {
-                        const ok = await callNativeMethod('cozmicat123.e2ee.setKey', [password])
-                        setError(ok ? '' : `Password must be 8-256 characters (got ${password.length})`)
-                        if (ok) {
-                                setHasKey(true)
-                                redecrypt()
-                                setPassword('')
-                                // The input is uncontrolled, so a new key empties it
-                                setNonce(n => n + 1)
-                        }
-                } catch (e) {
-                        setError(String(e))
-                } finally {
-                        setBusy(false)
+                const failure = await applyKey(password)
+                setError(failure ?? '')
+                if (!failure) {
+                        setHasKey(true)
+                        setPassword('')
+                        // The input is uncontrolled, so a new key empties it
+                        setNonce(n => n + 1)
                 }
+                setBusy(false)
         }
 
         return (
@@ -77,6 +76,15 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                         storage.set({ enabled: false })
                                                 }}
                                         />
+                                        <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                text="Copy debug log"
+                                                onPress={() => {
+                                                        Clipboard.setString(debugText())
+                                                        toast('Debug log copied')
+                                                }}
+                                        />
                                         <Text>{hasKey ? 'Key set (kept in memory only).' : 'No key set.'}</Text>
                                 </Stack>
                                 <TableRowGroup title="Encryption">
@@ -88,6 +96,17 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                         // Aliucord plugin does the same: no encrypting until a key exists
                                                         if (v && !hasKey) return setError('Set a key first')
                                                         storage.set({ enabled: v })
+                                                }}
+                                        />
+                                </TableRowGroup>
+                                <TableRowGroup title="Media">
+                                        <TableSwitchRow
+                                                label="Download large media automatically"
+                                                subLabel="Pictures over 6 MiB and videos over 4 MiB. Off keeps them as encrypted files."
+                                                value={largeMedia}
+                                                onValueChange={(v: boolean) => {
+                                                        storage.set({ largeMedia: v })
+                                                        callNativeMethod('cozmicat123.e2ee.largeMedia', [v]).then(() => redecrypt())
                                                 }}
                                         />
                                 </TableRowGroup>

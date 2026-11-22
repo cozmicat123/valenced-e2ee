@@ -15,7 +15,7 @@ fi
 git -C "$SRC" checkout -q "$PIN"
 
 ok=1
-for f in Argon2id Blake2b Crypto ForcedKeys; do
+for f in Argon2id Blake2b Crypto FileNames ForcedKeys ImageLoader MediaCache SuperProperties; do
   if diff <(grep -v '^package ' "$SRC/$UP/$f.java") <(grep -v '^package ' "$OURS/$f.java") >/dev/null; then
     echo "$f same"
   else
@@ -23,4 +23,15 @@ for f in Argon2id Blake2b Crypto ForcedKeys; do
     ok=0
   fi
 done
+
+# AndroidMedia is upstream plus patches/AndroidMedia.patch (OkHttp -> HttpURLConnection), nothing else
+w=$(mktemp -d)
+grep -v '^package ' "$SRC/$UP/AndroidMedia.java" > "$w/AndroidMedia.java"
+patch -s "$w/AndroidMedia.java" < patches/AndroidMedia.patch
+if diff "$w/AndroidMedia.java" <(grep -v '^package ' "$OURS/AndroidMedia.java") >/dev/null; then
+  echo "AndroidMedia same (with patch)"
+else
+  echo "AndroidMedia DIFFERS from pin $PIN + patch"
+  ok=0
+fi
 [ "$ok" = 1 ]

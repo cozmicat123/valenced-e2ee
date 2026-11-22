@@ -4,26 +4,23 @@
 //  - Flux payload rewrite: clear-urls/index.tsx:104-111 (MESSAGE_CREATE). The LOAD_MESSAGES_SUCCESS shape ({ messages, channelId })
 //    has no human source; it is only verified by working on device
 //  - jsonStorage wiring: anonymous-file-names/js/index.ts:39-44
-// Behaviour mirrors cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt (Aegires MessageCryptoHelper).
-import { ToastActionCreators } from '@valenced/discord/actions'
-import { onFluxEventDispatched, Stores } from '@valenced/discord/flux'
+// Outgoing side (text and files) is in send.ts. Behaviour mirrors cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt (Aegires MessageCryptoHelper).
+import { onFluxEventDispatched } from '@valenced/discord/flux'
 import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
+import { installInputButton } from './input-button'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
+import { createSender } from './send'
 import SettingsComponent from './settings'
+import type { SendArgs } from './send'
 
 export interface Settings {
         enabled: boolean
         preset: number // Crypto.Preset index: 0 = AES-128, 1 = AES-192, 2 = AES-256
+        largeMedia?: boolean // absent in older saves, means on
 }
-
-export const ID = 'cozmicat123.e2ee'
-
-// Errors are shown as a toast, as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
-// Call shape: valenced-plugins better-invites/js/index.tsx:32, bio-emoji-button/js/picker.tsx:262
-const ToastKey = `${ID}.error`
 
 declare module '@valenced/modules/native' {
         interface NativeMethods {
@@ -31,25 +28,46 @@ declare module '@valenced/modules/native' {
                 'cozmicat123.e2ee.setKey': [args: [password: string], returnValue: boolean]
                 'cozmicat123.e2ee.clearKey': [args: [], returnValue: null]
                 'cozmicat123.e2ee.hasKey': [args: [], returnValue: boolean]
+                'cozmicat123.e2ee.largeMedia': [args: [on: boolean], returnValue: null]
                 'cozmicat123.e2ee.encrypt': [
                         args: [channelId: string, plain: string, selfId: string | null],
-                        returnValue: { text: string | null; error: string | null } | null,
+                        returnValue: { text?: string; error?: string } | null,
                 ]
+                'cozmicat123.e2ee.playVideo': [args: [uri: string], returnValue: boolean]
+                'cozmicat123.e2ee.encryptOn': [args: [channelId: string], returnValue: boolean]
+                'cozmicat123.e2ee.encryptFile': [
+                        args: [uri: string, filename: string | null, mimeType: string | null, channelId: string, selfId: string | null],
+                        returnValue: { path?: string; name?: string; size?: number; error?: string },
+                ]
+                'cozmicat123.e2ee.decryptFile': [
+                        args: [url: string, channelId: string, authorId: string | null, size: number, w: number, h: number, videoExt: string | null],
+                        returnValue: { path?: string; w?: number | null; h?: number | null; confirm?: number; error?: string },
+                ]
+                'cozmicat123.e2ee.clearMedia': [args: [], returnValue: null]
                 'cozmicat123.e2ee.decrypt': [
                         args: [items: [content: unknown, channelId: string, authorId: string | null][]],
-                        returnValue: { text: string | null; enc: boolean }[],
+                        returnValue: { text: string | null; enc: boolean; w: number | null; h: number | null }[],
                 ]
         }
 }
 
 interface MessageActions {
-        sendMessage(channelId: string, message: { content: string }, clearDraft: boolean, options?: object): unknown
+        sendMessage(...args: SendArgs): unknown
         editMessage(channelId: string, messageId: string, message: { content: string }): unknown
 }
 
 // Aegires MessageBinder.java:46 puts a lock before the time; here it goes before the name (show-tag/index.ts:79-92 rewrites the same row field)
 const LOCK = '\uD83D\uDD12 '
 const MessageRowType = 1
+
+interface MediaSource {
+        uri: string
+}
+
+interface MediaModal {
+        // Seen on device: a list of sources, or a list holding a list (the same video, tapped from another message layout)
+        openMediaModal(options: { initialSources: (MediaSource | MediaSource[])[] }): void
+}
 
 interface RowManager {
         prototype: { generate(args: { message?: any }): MessageRow }
@@ -69,6 +87,7 @@ export default plugin<{ jsonStorage: Settings }>({
                 storage.get().then(
                         s => {
                                 if (s.enabled) storage.set({ enabled: false })
+                                callNativeMethodSync('cozmicat123.e2ee.largeMedia', [s.largeMedia ?? true])
                         },
                         e => plugin.reportError(e),
                 )
@@ -79,35 +98,39 @@ export default plugin<{ jsonStorage: Settings }>({
                         return
                 }
 
-                // Fails closed: returns false when the message must not be sent
-                const encryptOutgoing = (channelId: string, data: { content?: string } | undefined) => {
-                        const plain = data?.content?.trim()
-                        if (!data || !plain) return true
-                        callNativeMethodSync('cozmicat123.e2ee.configure', [
-                                !!storage.cache?.enabled,
-                                storage.cache?.preset ?? 2,
-                        ])
-                        const selfId = (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
-                        const res = callNativeMethodSync('cozmicat123.e2ee.encrypt', [channelId, plain, selfId])
-                        if (res === null) return true // encryption off for this channel
-                        if (res.error || !res.text) {
-                                ToastActionCreators.open(ToastKey, { text: res.error ?? 'Encryption failed' })
-                                return false
-                        }
-                        data.content = res.text
-                        return true
-                }
+                const configureNative = () =>
+                        callNativeMethodSync('cozmicat123.e2ee.configure', [!!storage.cache?.enabled, storage.cache?.preset ?? 2])
+                const { encryptOutgoing, sendWithFile } = createSender(configureNative)
+
+                installInputButton(cleanup, storage)
 
                 cleanup(
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
+                                                const files = args[3]?.attachmentsToUpload
+                                                if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
                                                 if (!encryptOutgoing(args[0], args[1])) return Promise.resolve()
                                                 return Reflect.apply(original, this, args)
                                         }),
                                         instead(messages, 'editMessage', function (args, original) {
                                                 if (!encryptOutgoing(args[0], args[2])) return Promise.resolve()
+                                                return Reflect.apply(original, this, args)
+                                        }),
+                                )
+                        }),
+                )
+
+                cleanup(
+                        // Discord's viewer cannot play a local video, so a decrypted one opens in the native player instead.
+                        // Module lookup as in picture-links/js/index.tsx:830; the uri is what the viewer was opened with (seen on device)
+                        getModules(withProps<MediaModal>('openMediaModal'), modal => {
+                                cleanup(
+                                        instead(modal, 'openMediaModal', function (args, original) {
+                                                const first = args[0]?.initialSources?.[0]
+                                                const uri = (Array.isArray(first) ? first[0] : first)?.uri
+                                                if (uri?.startsWith('file://') && callNativeMethodSync('cozmicat123.e2ee.playVideo', [uri])) return
                                                 return Reflect.apply(original, this, args)
                                         }),
                                 )

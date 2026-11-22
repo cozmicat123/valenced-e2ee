@@ -1,51 +1,12 @@
 @file:JvmName("E2eePlugin")
 
-// AI-written glue (v1). Logic ported from cozmicat123/aliucord-e2ee@aegires-sync E2eePlugin.kt `object E2ee`
-// (keyFor/presetFor/encryptOn/encryptText), which itself mirrors Aegires MessageListScreen + MessageCryptoHelper.
-// Plugin/bridge structure: Valenced/valenced-plugin-template example-plugin MyPlugin.kt.
-// Crypto, ForcedKeys, Argon2id, Blake2b are vendored verbatim from Aegires and not touched here.
+// AI-written glue. Plugin/bridge structure: Valenced/valenced-plugin-template example-plugin MyPlugin.kt.
+// This file only registers the native methods the JS side calls; the work is in E2ee.kt (text) and E2eeFiles.kt (files).
 package com.e2ee.plugin
 
 import app.valenced.plugins.plugin
 import app.valenced.xposed.api.registerNativeAsyncMethod
 import app.valenced.xposed.api.registerNativeMethod
-import java.util.concurrent.ConcurrentHashMap
-import javax.crypto.SecretKey
-
-private object E2ee {
-    @Volatile var key: SecretKey? = null
-    @Volatile var enabled = false
-    @Volatile var preset: Crypto.Preset = Crypto.Preset.AES256
-
-    // Forced-channel keys are derived once per channel; never start two 64 MiB derivations for one channel
-    private val preparing = ConcurrentHashMap.newKeySet<String>()
-
-    fun isForced(channelId: String) = ForcedKeys.isForced(channelId)
-
-    fun keyFor(channelId: String): SecretKey? {
-        if (!isForced(channelId)) return key
-        ForcedKeys.keyFor(channelId)?.let { return it }
-        if (preparing.add(channelId)) ForcedKeys.prepare(channelId) { preparing.remove(channelId) }
-        return null
-    }
-
-    fun presetFor(channelId: String): Crypto.Preset =
-        if (isForced(channelId)) Crypto.Preset.AES128 else preset
-
-    fun encryptOn(channelId: String): Boolean = isForced(channelId) || enabled
-
-    // Same checks and messages as the Aliucord plugin. Returns text, or the message to show the user.
-    fun encryptText(channelId: String, plain: String, sender: String?): Pair<String?, String?> {
-        val k = keyFor(channelId)
-            ?: return null to (if (isForced(channelId)) "Encryption key not ready yet" else "Encryption key missing")
-        if (sender == null) return null to "Not ready yet, try again in a moment"
-        val p = presetFor(channelId)
-        val max = Crypto.maxPlaintextBytes(p)
-        if (Crypto.utf8Length(plain) > max) return null to "Too long for ${p.label} (max $max bytes)"
-        val out = Crypto.encrypt(plain, k, p, channelId, sender) ?: return null to "Encryption failed"
-        return out to null
-    }
-}
 
 val e2eePlugin = plugin {
     start {
@@ -74,7 +35,21 @@ val e2eePlugin = plugin {
 
         registerNativeMethod("$id.hasKey") { _ -> E2ee.key != null }
 
-        // [channelId, plain, selfId?] -> { text?: String, error?: String }, or null when encryption is off for the channel
+        // [on: Boolean]: download received media over Aegires' automatic size limit without asking
+        registerNativeMethod("$id.largeMedia") { args ->
+            E2ee.largeMedia = args[0] as Boolean
+            Unit
+        }
+
+        registerNativeMethod("$id.clearMedia") { _ ->
+            E2eeFiles.clear()
+            Unit
+        }
+
+        // [channelId] -> Boolean
+        registerNativeMethod("$id.encryptOn") { args -> E2ee.encryptOn(args[0] as String) }
+
+        // [channelId, plain, selfId?] -> { text } | { error }, or null when encryption is off for the channel
         registerNativeMethod("$id.encrypt") { args ->
             val channelId = args[0] as String
             val plain = args[1] as String
@@ -82,26 +57,44 @@ val e2eePlugin = plugin {
             if (!E2ee.encryptOn(channelId) || Crypto.looksEncrypted(plain)) {
                 null
             } else {
-                val (text, error) = E2ee.encryptText(channelId, plain, args[2] as String?)
-                mapOf("text" to text, "error" to error)
+                E2ee.attempt("Encryption") { mapOf("text" to E2ee.encryptText(channelId, plain, args[2] as String?)) }
             }
         }
 
-        // [[content, channelId, authorId?], ...] -> [{ text: plain | null, enc: Boolean }, ...]
-        // text null = leave the message as is. enc = looksEncrypted(content), same rule as Aegires Message.encrypted.
-        registerNativeMethod("$id.decrypt") { args ->
-            (args[0] as List<*>).map { item ->
-                val (content, channelId, author) = (item as List<*>)
-                val enc = content is String && Crypto.looksEncrypted(content)
-                val k = E2ee.keyFor(channelId as String)
-                val text = if (k == null || !enc) null else Crypto.decrypt(content as String, k, channelId, author as String?)
-                mapOf("text" to text, "enc" to enc)
+        // [[content, channelId, authorId?], ...] -> [{ text, enc, w, h }, ...]
+        registerNativeMethod("$id.decrypt") { args -> E2ee.decryptAll(args[0] as List<*>) }
+
+        // [uri, filename?, mimeType?, channelId, selfId?] -> { path, name, size } | { error }. Heavy, so off the RN thread.
+        registerNativeAsyncMethod("$id.encryptFile") { args ->
+            E2ee.attempt("File encryption") {
+                E2eeFiles.encrypt(args[0] as String, args[1] as String?, args[2] as String?, args[3] as String, args[4] as String?)
             }
+        }
+
+        // [url, channelId, selfId?, size, w, h, videoExt?] -> { path, w?, h? } | { confirm: bytes } | { error }
+        registerNativeAsyncMethod("$id.decryptFile") { args ->
+            E2ee.attempt("Media decryption") {
+                E2eeFiles.decrypt(
+                    args[0] as String,
+                    args[1] as String,
+                    args[2] as String?,
+                    (args[3] as Number).toLong(),
+                    (args[4] as Number).toInt(),
+                    (args[5] as Number).toInt(),
+                    args[6] as String?,
+                )
+            }
+        }
+
+        // [uri] -> Boolean: plays a decrypted video in a native fullscreen player; false when the uri is not one of ours
+        withAppActivity { activity ->
+            registerNativeMethod("$id.playVideo") { args -> VideoPlayer.play(activity, args[0] as String) }
         }
     }
 
     stop {
         E2ee.key = null
         E2ee.enabled = false
+        E2eeFiles.clear()
     }
 }
