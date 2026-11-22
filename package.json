@@ -19,7 +19,7 @@
 		"@valenced/themes-api": "git+https://github.com/Valenced/valenced-themes-types.git"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.12",
+		"@biomejs/biome": "2.5.12",
 		"@types/node": "^26.4.1",
 		"@types/react": "^19.2.18",
 		"react-native": "0.81.6",
