@@ -10,6 +10,7 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
+import { debug } from './debug'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import { createSender } from './send'
 import SettingsComponent from './settings'
@@ -116,9 +117,11 @@ export default plugin<{ jsonStorage: Settings }>({
                         // Discord's viewer cannot play a local video, so a decrypted one opens in the native player instead.
                         // Module lookup as in picture-links/js/index.tsx:830; the uri is what the viewer was opened with (seen on device)
                         getModules(withProps<MediaModal>('openMediaModal'), modal => {
+                                debug(`TEMP viewer module keys: ${Object.keys(modal).join(',')}`)
                                 cleanup(
                                         instead(modal, 'openMediaModal', function (args, original) {
                                                 const uri = args[0]?.initialSources?.[0]?.uri
+                                                debug(`TEMP openMediaModal ${uri}`)
                                                 if (uri?.startsWith('file://') && callNativeMethodSync('cozmicat123.e2ee.playVideo', [uri])) return
                                                 return Reflect.apply(original, this, args)
                                         }),
