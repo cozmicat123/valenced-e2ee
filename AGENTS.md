@@ -58,7 +58,7 @@ Native Kotlin does the work; JS only hooks Discord and renders. The JS side call
 
 ## Release state
 
-- Manifest `2.0.0`. `valenced-port` publishes betas; merging to `main` publishes stable. Bump the manifest on `valenced-port` after a stable release (see `HANDOFF.md`).
+- Stable 2.0.0 is released (tag e2ee@2.0.0); the manifest on valenced-port is now 2.0.1. `valenced-port` publishes betas; merging to `main` publishes stable. Bump the manifest on `valenced-port` after a stable release (see `HANDOFF.md`).
 - `v1` (text only) was on `main` before this work.
 
 ## Open items
