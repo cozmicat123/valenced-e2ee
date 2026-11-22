@@ -49,10 +49,10 @@ export function createSender(configureNative: () => void) {
 
         // Returns a copy of the upload object with the ciphertext file in place (prototype kept, the original stays untouched
         // for draft recovery), or undefined after telling the user why not.
-        async function encryptUpload(f: Upload, channelId: string) {
+        async function encryptUpload(f: Upload, uri: string, channelId: string) {
                 const item = f.item
                 const res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
-                        item.uri,
+                        uri,
                         f.filename ?? null,
                         f.mimeType ?? null,
                         channelId,
@@ -66,9 +66,9 @@ export function createSender(configureNative: () => void) {
                         toast(res.error ?? 'File encryption failed')
                         return
                 }
-                const uri = `file://${res.path}`
+                const cipherUri = `file://${res.path}`
                 return Object.assign(Object.create(Object.getPrototypeOf(f)), f, {
-                        item: { ...item, uri, originalUri: uri, filename: res.name, mimeType: 'application/octet-stream' },
+                        item: { ...item, uri: cipherUri, originalUri: cipherUri, filename: res.name, mimeType: 'application/octet-stream' },
                         filename: res.name,
                         mimeType: 'application/octet-stream',
                         currentSize: res.size,
@@ -85,14 +85,15 @@ export function createSender(configureNative: () => void) {
                 if (files.length > 1) return toast('Encrypted chats take one file per message')
                 // The picked file's location lives in the CloudUpload's `item`, not on the upload itself
                 const f = files[0]
-                if (typeof f.item?.uri !== 'string') {
+                const uri = f.item?.uri
+                if (typeof uri !== 'string') {
                         debug(`file item has no uri: item keys=${Object.keys(f.item ?? {}).join(',')}`)
                         return toast('Unknown attachment format, file not sent')
                 }
                 // Done on a copy so the original draft stays as it was
                 const message = { ...draft, content: sizeTag(f) + (draft?.content ?? '') }
                 if (!encryptOutgoing(channelId, message)) return
-                const upload = await encryptUpload(f, channelId)
+                const upload = await encryptUpload(f, uri, channelId)
                 if (!upload) return
                 const next: SendArgs = [channelId, message, clearDraft, { ...options, attachmentsToUpload: [upload] }]
                 return Reflect.apply(original, self, next)
