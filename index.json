@@ -8,7 +8,8 @@
       "description": "End-to-end encryption compatible with Aegires.",
       "author": "cozmicat123",
       "channels": {
-        "latest": "2.0.0"
+        "latest": "2.0.0",
+        "beta": "2.0.1-b00077"
       },
       "versions": {
         "1.0.0": {
@@ -315,6 +316,21 @@
           "url": "https://cozmicat123.github.io/valenced-e2ee/pool/cozmicat123.e2ee@2.0.0.zip",
           "sha256": "a79958268b4c25aeabf704aa589543007380b9f566090c48724709afed3d9871",
           "size": 58301,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {
+              "version": "*"
+            },
+            "valenced.settings": {},
+            "valenced.settings.plugins": {}
+          }
+        },
+        "2.0.1-b00077": {
+          "url": "https://cozmicat123.github.io/valenced-e2ee/pool/cozmicat123.e2ee@2.0.1-b00077.zip",
+          "sha256": "deed49b8c7081b2b06c3b48f7dbcedb933460594acecdabb3f5ab0454b3255cd",
+          "size": 58307,
           "dependencies": {
             "valenced.api": {
               "version": ">=1 <2"
