@@ -1,15 +1,12 @@
 // AI-written glue (v1 text, v2 files). Hook shapes copied from human Valenced plugins are listed in index.ts.
 // Outgoing side: encrypts the text, and with a file attached swaps the picked file for its Aegires-format ciphertext copy
 // (native encryptFile) right before sending. The CloudUpload field names come from datamined Discord code and are checked on device.
-import { ToastActionCreators } from '@valenced/discord/actions'
 import { Stores } from '@valenced/discord/flux'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { debug } from './debug'
+import { toast } from './toast'
 
-// Errors are shown as a toast, as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
-// Call shape: valenced-plugins better-invites/js/index.tsx:32, bio-emoji-button/js/picker.tsx:262
-const toast = (text: string) => ToastActionCreators.open('cozmicat123.e2ee.error', { text })
-
+// Errors are shown as a toast (toast.ts), as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
 const selfIdOf = (): string | null => (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
 
 // Aegires puts the picture size in front of the caption before encrypting it (MessageListScreen.java:455-470), also when there is no caption

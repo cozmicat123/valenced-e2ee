@@ -6,7 +6,6 @@
 // Texts and rules mirror aliucord-e2ee@aegires-sync E2eeSettings.kt (password 8-256, preset radios).
 import Page from '@valenced/components/Page'
 import { Design } from '@valenced/discord/design'
-import { ToastActionCreators } from '@valenced/discord/actions'
 import { Clipboard } from '@valenced/externals/react-native-clipboard'
 import { callNativeMethod } from '@valenced/modules/native'
 import { useEffect, useState } from 'react'
@@ -14,7 +13,9 @@ import { ScrollView, Text } from 'react-native'
 import type { PluginSettingsComponent } from '@valenced/plugins/types'
 import type { ComponentProps } from 'react'
 import { debugText } from './debug'
+import { applyKey } from './key'
 import { redecrypt } from './messages'
+import { toast } from './toast'
 import type { Settings } from '.'
 
 const { Button, Stack, TableRadioGroup, TableRadioRow, TableRowGroup, TableSwitchRow, TextInput } = Design
@@ -35,21 +36,15 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
 
         const setKey = async () => {
                 setBusy(true)
-                try {
-                        const ok = await callNativeMethod('cozmicat123.e2ee.setKey', [password])
-                        setError(ok ? '' : `Password must be 8-256 characters (got ${password.length})`)
-                        if (ok) {
-                                setHasKey(true)
-                                redecrypt()
-                                setPassword('')
-                                // The input is uncontrolled, so a new key empties it
-                                setNonce(n => n + 1)
-                        }
-                } catch (e) {
-                        setError(String(e))
-                } finally {
-                        setBusy(false)
+                const failure = await applyKey(password)
+                setError(failure ?? '')
+                if (!failure) {
+                        setHasKey(true)
+                        setPassword('')
+                        // The input is uncontrolled, so a new key empties it
+                        setNonce(n => n + 1)
                 }
+                setBusy(false)
         }
 
         return (
@@ -87,7 +82,7 @@ export default function SettingsComponent({ api: { jsonStorage: storage } }: Pro
                                                 text="Copy debug log"
                                                 onPress={() => {
                                                         Clipboard.setString(debugText())
-                                                        ToastActionCreators.open('cozmicat123.e2ee.copied', { text: 'Debug log copied' })
+                                                        toast('Debug log copied')
                                                 }}
                                         />
                                         <Text>{hasKey ? 'Key set (kept in memory only).' : 'No key set.'}</Text>

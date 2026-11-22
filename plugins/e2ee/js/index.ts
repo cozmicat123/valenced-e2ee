@@ -10,6 +10,7 @@ import { getModules } from '@valenced/modules/finders'
 import { withName, withProps } from '@valenced/modules/finders/filters'
 import { callNativeMethod, callNativeMethodSync } from '@valenced/modules/native'
 import { after, before, instead } from '@valenced/patcher'
+import { installInputButton } from './input-button'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import { createSender } from './send'
 import SettingsComponent from './settings'
@@ -101,6 +102,8 @@ export default plugin<{ jsonStorage: Settings }>({
                 const configureNative = () =>
                         callNativeMethodSync('cozmicat123.e2ee.configure', [!!storage.cache?.enabled, storage.cache?.preset ?? 2])
                 const { encryptOutgoing, sendWithFile } = createSender(configureNative)
+
+                installInputButton(cleanup, storage)
 
                 cleanup(
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
