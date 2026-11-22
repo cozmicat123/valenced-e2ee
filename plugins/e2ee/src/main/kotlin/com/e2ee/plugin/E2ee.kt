@@ -51,7 +51,7 @@ internal object E2ee {
     }
 
     // [[content, channelId, authorId?], ...] -> [{ text: plain | null, enc, w, h }, ...]
-    // text null = leave the message as is. enc = looksEncrypted(content), same rule as Aegires Message.encrypted.
+    // text null = leave the message as is. enc = looksEncrypted(content), same rule as Aegires model/Message.java:36.
     fun decryptAll(items: List<*>): List<Map<String, Any?>> = items.map { item ->
         val (content, channelId, author) = item as List<*>
         val enc = content is String && Crypto.looksEncrypted(content)

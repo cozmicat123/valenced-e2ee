@@ -17,7 +17,7 @@ End-to-end encrypted chat for [Valenced](https://github.com/Valenced), compatibl
 - Crypto and media handling are Aegires' own classes, vendored in `plugins/e2ee/src/main/java/com/e2ee/plugin/` with only the `package` line changed. `AndroidMedia` is upstream plus `patches/AndroidMedia.patch` (OkHttp replaced by `HttpURLConnection`). `scripts/verify-vendored.sh` checks all of them against the pinned upstream commit in CI.
 - Kotlin (`plugins/e2ee/src/main/kotlin/`) holds the logic: `E2ee` (text), `E2eeFiles` (files), `VideoPlayer`, `E2eePlugin` (the native methods).
 - TypeScript (`plugins/e2ee/js/`) is only hooks and UI: message and upload hooks, the input-bar button, settings.
-- When Aegires changes, see [UPGRADING.md](UPGRADING.md).
+- When Aegires changes, see [HANDOFF.md](HANDOFF.md).
 
 ## Install
 

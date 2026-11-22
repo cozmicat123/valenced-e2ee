@@ -18,7 +18,7 @@ export interface FluxMessage {
         attachments?: Attachment[]
 }
 
-// Messages that were sent encrypted (Aegires Message.encrypted): id -> original ciphertext plus what decrypting needs.
+// Messages that were sent encrypted (Aegires model/Message.java:17 and 36): id -> original ciphertext plus what decrypting needs.
 // Kept because decrypting replaces the content in place, and a wrong key or Clear key must be able to lock the row (and
 // reply previews of it) again. Reply previews are stored too. Capped.
 interface Sealed {
