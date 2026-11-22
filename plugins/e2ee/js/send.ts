@@ -7,10 +7,29 @@ import { debug } from './debug'
 import { toast } from './toast'
 
 // Errors are shown as a toast (toast.ts), as in Aegires MessageCryptoHelper.java:42 and the Aliucord plugin's showToast.
-const selfIdOf = (): string | null => (Stores as any).UserStore?.getCurrentUser?.()?.id ?? null
+
+// A picked file as Discord's upload queue holds it (field names from datamined Discord code, checked on device)
+export interface Upload {
+        item: { uri?: string; width?: number; height?: number }
+        filename?: string
+        mimeType?: string
+        isImage?: boolean
+}
+
+export interface SendOptions {
+        attachmentsToUpload?: Upload[]
+}
+
+export type SendArgs = [channelId: string, message: { content?: string } | undefined, clearDraft: boolean, options?: SendOptions]
+
+// The user store is not in the typings, so its one method is declared here
+const selfIdOf = () =>
+        (Stores as unknown as { UserStore?: { getCurrentUser(): { id?: string } | undefined } }).UserStore?.getCurrentUser()?.id ?? null
 
 // Aegires puts the picture size in front of the caption before encrypting it (MessageListScreen.java:455-470), also when there is no caption
-const sizeTag = (f: any) => (f.isImage && f.item.width > 0 && f.item.height > 0 ? `[sz:${f.item.width},${f.item.height}]` : '')
+function sizeTag({ isImage, item: { width = 0, height = 0 } }: Upload) {
+        return isImage && width > 0 && height > 0 ? `[sz:${width},${height}]` : ''
+}
 
 export function createSender(configureNative: () => void) {
         // Fails closed: returns false when the message must not be sent
@@ -30,7 +49,7 @@ export function createSender(configureNative: () => void) {
 
         // Returns a copy of the upload object with the ciphertext file in place (prototype kept, the original stays untouched
         // for draft recovery), or undefined after telling the user why not.
-        async function encryptUpload(f: any, channelId: string) {
+        async function encryptUpload(f: Upload, channelId: string) {
                 const item = f.item
                 const res = await callNativeMethod('cozmicat123.e2ee.encryptFile', [
                         item.uri,
@@ -59,8 +78,8 @@ export function createSender(configureNative: () => void) {
         }
 
         // Aegires sends one file per message, so more than one is refused. Fails closed: on any problem nothing is sent.
-        async function sendWithFile(self: unknown, args: any[], original: (...a: any[]) => unknown, files: any[]) {
-                const channelId: string = args[0]
+        async function sendWithFile(self: unknown, args: SendArgs, original: (...a: SendArgs) => unknown, files: Upload[]) {
+                const [channelId, draft, clearDraft, options] = args
                 configureNative()
                 if (!callNativeMethodSync('cozmicat123.e2ee.encryptOn', [channelId])) return Reflect.apply(original, self, args)
                 if (files.length > 1) return toast('Encrypted chats take one file per message')
@@ -71,13 +90,11 @@ export function createSender(configureNative: () => void) {
                         return toast('Unknown attachment format, file not sent')
                 }
                 // Done on a copy so the original draft stays as it was
-                const message = { ...args[1], content: sizeTag(f) + (args[1]?.content ?? '') }
+                const message = { ...draft, content: sizeTag(f) + (draft?.content ?? '') }
                 if (!encryptOutgoing(channelId, message)) return
                 const upload = await encryptUpload(f, channelId)
                 if (!upload) return
-                const next = [...args]
-                next[1] = message
-                next[3] = { ...args[3], attachmentsToUpload: [upload] }
+                const next: SendArgs = [channelId, message, clearDraft, { ...options, attachmentsToUpload: [upload] }]
                 return Reflect.apply(original, self, next)
         }
 

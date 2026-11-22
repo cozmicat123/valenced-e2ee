@@ -1,10 +1,10 @@
 # AI-written glue. Steps copied from validate.yml (actions/checkout@v4, oven-sh/setup-bun@v2).
-# Catches what the bundler does not: a missing import or a wrong type fails the build here.
-name: Typecheck
+# tsc catches what the bundler does not (a missing import, a wrong type); vendored checks the Aegires files against the pinned commit.
+name: Checks
 
 on:
   push:
-    branches: [valenced-port]
+    branches: [main, valenced-port]
   workflow_dispatch:
 
 jobs:
@@ -19,3 +19,9 @@ jobs:
       - run: bunx tsc -b plugins/e2ee/tsconfig.json
       # Lint only, with the template's biome.json. Formatting is not enforced.
       - run: bunx biome lint plugins/e2ee/js
+
+  vendored:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/verify-vendored.sh

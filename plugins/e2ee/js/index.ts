@@ -14,6 +14,7 @@ import { installInputButton } from './input-button'
 import { decryptMessages, decryptPreview, encrypted } from './messages'
 import { createSender } from './send'
 import SettingsComponent from './settings'
+import type { SendArgs } from './send'
 
 export interface Settings {
         enabled: boolean
@@ -53,7 +54,7 @@ declare module '@valenced/modules/native' {
 }
 
 interface MessageActions {
-        sendMessage(channelId: string, message: { content: string }, clearDraft: boolean, options?: object): unknown
+        sendMessage(...args: SendArgs): unknown
         editMessage(channelId: string, messageId: string, message: { content: string }): unknown
 }
 
@@ -109,7 +110,7 @@ export default plugin<{ jsonStorage: Settings }>({
                         getModules(withProps<MessageActions>('sendMessage', 'editMessage'), messages => {
                                 cleanup(
                                         instead(messages, 'sendMessage', function (args, original) {
-                                                const files = (args[3] as any)?.attachmentsToUpload
+                                                const files = args[3]?.attachmentsToUpload
                                                 if (Array.isArray(files) && files.length) return sendWithFile(this, args, original, files)
                                                 // Blocked: return a promise. AI-chosen (no human hook found); a blocked send was tested on device and does not crash
                                                 if (!encryptOutgoing(args[0], args[1])) return Promise.resolve()
