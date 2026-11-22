@@ -124,8 +124,9 @@ export default plugin<{ jsonStorage: Settings }>({
                                 cleanup(
                                         instead(modal, 'openMediaModal', function (args, original) {
                                                 const uri = args[0]?.initialSources?.[0]?.uri
-                                                debug(`TEMP openMediaModal ${JSON.stringify(args[0]).slice(0, 600)}`)
-                                                if (uri?.startsWith('file://') && callNativeMethodSync('cozmicat123.e2ee.playVideo', [uri])) return
+                                                const played = !!uri?.startsWith('file://') && callNativeMethodSync('cozmicat123.e2ee.playVideo', [uri])
+                                                debug(`TEMP openMediaModal played=${played} ${uri}`)
+                                                if (played) return
                                                 return Reflect.apply(original, this, args)
                                         }),
                                 )

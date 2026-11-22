@@ -91,7 +91,7 @@ internal object E2eeFiles {
                 // Must complete the future whatever happens, or the caller waits out DECRYPT_WAIT_S
                 result.complete(
                     runCatching { described(if (videoExt == null) plaintext else poster(playable(plaintext, videoExt)), w, h) }
-                        .getOrElse { mapOf("error" to "Could not read the media") },
+                        .getOrElse { mapOf("error" to "Could not read the media: ${it.javaClass.simpleName} ${it.message}") },
                 )
             }
         })
